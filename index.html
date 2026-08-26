@@ -215,6 +215,7 @@
           <span>Micrófono</span>
           <select id="calibMic"><option value="">Predeterminado</option></select>
         </label>
+        <div id="calibMicState" class="mic-state">Conectando con el micrófono…</div>
         <div class="meter meter-lg" title="Nivel de entrada">
           <div id="calibMeterFill" class="meter-fill"></div>
           <div id="calibMeterPeak" class="meter-peak"></div>
@@ -272,6 +273,7 @@
     <footer class="modal-foot">
       <button id="calibPrev" class="btn btn-ghost">← Atrás</button>
       <div id="calibMsg" class="calib-msg"></div>
+      <button id="calibSkip" class="btn btn-ghost hidden">Omitir paso</button>
       <button id="calibNext" class="btn btn-primary">Siguiente →</button>
     </footer>
   </div>

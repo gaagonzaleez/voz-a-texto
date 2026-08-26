@@ -81,9 +81,9 @@ export function signalToNoise(voiceDb, noiseDb) {
 }
 
 /** Corre una frase de prueba y la compara con lo que se entendió. */
-export async function testPhrase(phrase, lang) {
+export async function testPhrase(phrase, lang, onState = null) {
   if (!isSupported) throw new Error('unsupported');
-  const heard = await listenOnce({ lang, maxMs: 15000, silenceMs: 2200 });
+  const heard = await listenOnce({ lang, maxMs: 15000, silenceMs: 2200, onState });
   const result = diffWords(phrase, heard);
   return { phrase, heard, ...result, suggestions: suggestionsFromDiff(result.ops) };
 }

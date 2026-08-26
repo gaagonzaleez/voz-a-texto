@@ -192,7 +192,8 @@ export class Transcriber extends EventTarget {
 }
 
 /** Escucha una sola frase y devuelve lo que se entendió (se usa en la calibración). */
-export function listenOnce({ lang = 'es-AR', maxMs = 12000, silenceMs = 2500 } = {}) {
+export function listenOnce({ lang = 'es-AR', maxMs = 12000, silenceMs = 2500,
+                             startMs = 4000, onState = null } = {}) {
   return new Promise((resolve, reject) => {
     if (!isSupported) return reject(new Error('unsupported'));
     const rec = new SR();
@@ -201,17 +202,34 @@ export function listenOnce({ lang = 'es-AR', maxMs = 12000, silenceMs = 2500 } =
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
-    let finalText = '', interimText = '', silenceTimer = 0, done = false;
+    let finalText = '', interimText = '', silenceTimer = 0, done = false, started = false;
 
     const finish = () => {
       if (done) return;
       done = true;
       clearTimeout(silenceTimer);
       clearTimeout(hardStop);
+      clearTimeout(startTimer);
       try { rec.stop(); } catch {}
+      onState?.('done');
       resolve((finalText || interimText).trim());
     };
     const hardStop = setTimeout(finish, maxMs);
+
+    // Si el motor de voz no llega a arrancar, no tiene sentido esperar
+    const startTimer = setTimeout(() => {
+      if (started || done) return;
+      done = true;
+      clearTimeout(hardStop);
+      try { rec.abort(); } catch {}
+      reject(new Error('no-start'));
+    }, startMs);
+
+    rec.onstart = () => {
+      started = true;
+      clearTimeout(startTimer);
+      onState?.('listening');
+    };
 
     rec.onresult = e => {
       interimText = '';
@@ -227,10 +245,12 @@ export function listenOnce({ lang = 'es-AR', maxMs = 12000, silenceMs = 2500 } =
       if (done) return;
       done = true;
       clearTimeout(hardStop);
+      clearTimeout(startTimer);
       reject(new Error(e.error || 'error'));
     };
     rec.onend = () => finish();
 
-    try { rec.start(); } catch (err) { reject(err); }
+    onState?.('starting');
+    try { rec.start(); } catch (err) { clearTimeout(startTimer); reject(err); }
   });
 }

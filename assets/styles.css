@@ -222,6 +222,15 @@ button,input,select,textarea{font:inherit;color:inherit}
 .tag.warn{background:#3a2f14;color:var(--warn)}
 .tag.bad{background:#3a1c1f;color:var(--bad)}
 .tag.run{background:#1b2b4d;color:#8fb2ff}
+.mic-state{
+  font-size:12.8px;padding:9px 12px;border-radius:9px;margin-top:12px;
+  background:var(--card2);border:1px solid var(--line);color:var(--tx2);
+}
+.mic-state.ok{background:#123a30;border-color:#1d4d3f;color:#7ee0b0}
+.mic-state.err{background:#2a1a1e;border-color:#5d2b33;color:#ffb3ba}
+.mic-state b{display:block;color:inherit;margin-bottom:2px}
+.modal-foot .calib-msg{text-align:left}
+
 .advice{background:#141b2b;border:1px solid #26375c;border-left:3px solid var(--accent);border-radius:9px;padding:11px 13px;font-size:12.8px;color:var(--tx2);margin-top:14px}
 .advice b{color:var(--tx);display:block;margin-bottom:3px}
 
@@ -281,6 +290,22 @@ button,input,select,textarea{font:inherit;color:inherit}
   .rec-actions .btn{flex:1}
   .calib-tests{grid-template-columns:1fr}
 }
+/* En pantallas angostas el pie del asistente se apila: el mensaje arriba,
+   los botones abajo, sin que se parta el texto de cada uno. */
+@media (max-width:560px){
+  .modal-box{width:100%}
+  .modal-foot{flex-wrap:wrap;gap:8px}
+  .modal-foot .calib-msg{order:-1;flex:1 1 100%;text-align:left}
+  .modal-foot .btn{flex:1 1 auto;white-space:nowrap;padding:9px 12px}
+  .steps{gap:6px;padding:0 16px 12px}
+  .step{font-size:11.5px;gap:6px}
+  .step b{flex:0 0 19px;width:19px;height:19px;font-size:11px}
+  .modal-body{padding:8px 16px 16px}
+  .modal-head{padding:16px 16px 10px}
+  .modal-foot{padding:12px 16px}
+  .phrase-text{font-size:17px}
+}
+
 @media print{
   .sidebar,.recorder,.panels,.topbar-right,.doc-head,.interim,.foot{display:none !important}
   body,.app,.main{display:block;background:#fff;color:#000}

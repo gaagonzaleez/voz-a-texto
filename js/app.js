@@ -186,7 +186,9 @@ async function startRecording() {
     if (state.prefs.keepAudio) await recorder.start();
   } catch (err) {
     setStatus('idle');
-    toast(micError(err), 'err', 6000);
+    const msg = micError(err);
+    toast(msg, 'err', 8000);
+    $('#recHint').textContent = msg;   // el aviso flotante puede quedar fuera de pantalla
     return;
   }
 
@@ -345,7 +347,13 @@ function bindEngines() {
     $('#interim').textContent = t;
   });
   transcriber.addEventListener('error', e => {
-    toast(e.detail.message, 'err', 6000);
+    let msg = e.detail.message;
+    // En Android, grabar el audio y dictar a la vez puede pelearse por el micrófono
+    if (state.prefs.keepAudio && (e.detail.code === 'audio-capture' || e.detail.code === 'not-allowed')) {
+      msg += ' Si estás en el celular, probá destildar «Guardar audio»: algunos teléfonos no dejan grabar y dictar al mismo tiempo.';
+    }
+    toast(msg, 'err', 9000);
+    $('#recHint').textContent = msg;
     if (state.mode === 'recording') stopRecording();
   });
   transcriber.addEventListener('warn', e => toast(e.detail.message, '', 2500));
@@ -725,12 +733,26 @@ function openCalib(auto) {
   openCalibMic();
 }
 
+/** Mensaje fijo dentro del paso 1 (los avisos flotantes pueden quedar
+    fuera de pantalla cuando la app corre incrustada). */
+function setMicState(kind, text) {
+  const el = $('#calibMicState');
+  el.className = 'mic-state ' + kind;
+  el.innerHTML = text;
+}
+
 async function openCalibMic() {
+  setMicState('', 'Conectando con el micrófono…');
   try {
     await recorder.openMic($('#calibMic').value || state.prefs.micId);
     await refreshMicList();
+    const label = recorder.stream?.getAudioTracks?.()[0]?.label;
+    setMicState('ok', `<b>Micrófono conectado</b>${escapeHtml(label || 'Listo para medir')}`);
+    return true;
   } catch (err) {
-    toast(micError(err), 'err', 6000);
+    setMicState('err', `<b>No se pudo abrir el micrófono</b>${escapeHtml(micError(err))}`);
+    updateCalibFooter();
+    return false;
   }
 }
 
@@ -751,11 +773,32 @@ function showStep(n) {
   $$('.cstep').forEach(s => s.classList.toggle('is-active', +s.dataset.cstep === n));
   $('#calibPrev').disabled = n === 1;
   $('#calibNext').textContent = n === 3 ? (calib.auto ? 'Guardar y grabar' : 'Guardar y cerrar') : 'Siguiente →';
-  $('#calibMsg').textContent =
-    n === 1 ? 'Hacé las dos mediciones para continuar.' :
-    n === 2 ? 'Leé las frases: así aprendo cómo te entiende el dictado.' :
-              'Confirmá las correcciones y guardá tu perfil.';
   if (n === 3) renderSuggestions();
+  updateCalibFooter();
+}
+
+/** ¿Qué falta en este paso? Se muestra en el pie, que siempre está a la vista,
+    y se ofrece omitirlo para que nadie quede trabado. */
+function stepPending(n) {
+  if (n === 1 && (!calib.noise || !calib.level)) return 'medir';
+  if (n === 2 && !calib.results.length) return 'frases';
+  return null;
+}
+
+function updateCalibFooter() {
+  const n = calib.step;
+  const pending = stepPending(n);
+  const skip = $('#calibSkip');
+
+  skip.classList.toggle('hidden', !pending || n === 3);
+  skip.textContent = n === 1 ? 'Seguir sin medir' : 'Seguir sin probar';
+
+  $('#calibMsg').textContent =
+    n === 1 ? (pending ? 'Medí el silencio y tu voz, o seguí sin medir.'
+                       : 'Micrófono listo. Pasá a la prueba de dicción.') :
+    n === 2 ? (pending ? 'Leé al menos una frase, o seguí sin probar.'
+                       : 'Podés leer más frases o pasar al último paso.') :
+              'Confirmá las correcciones y guardá tu perfil.';
 }
 
 function bindCalib() {
@@ -770,8 +813,7 @@ function bindCalib() {
 
   $('#btnNoise').addEventListener('click', async () => {
     const btn = $('#btnNoise');
-    if (!recorder.stream) await openCalibMic();
-    if (!recorder.stream) return;
+    if (!recorder.stream && !(await openCalibMic())) return;
     btn.disabled = true;
     $('#noiseVerdict').className = 'tag run';
     const res = await Calib.measure(recorder, 4000, ({ remaining }) => {
@@ -784,12 +826,12 @@ function bindCalib() {
     btn.disabled = false;
     btn.textContent = 'Medir de nuevo';
     showMicAdvice();
+    updateCalibFooter();
   });
 
   $('#btnLevel').addEventListener('click', async () => {
     const btn = $('#btnLevel');
-    if (!recorder.stream) await openCalibMic();
-    if (!recorder.stream) return;
+    if (!recorder.stream && !(await openCalibMic())) return;
     btn.disabled = true;
     $('#levelVerdict').className = 'tag run';
     const res = await Calib.measure(recorder, 5000, ({ remaining }) => {
@@ -802,6 +844,7 @@ function bindCalib() {
     btn.disabled = false;
     btn.textContent = 'Medir de nuevo';
     showMicAdvice();
+    updateCalibFooter();
   });
 
   $('#btnPhrase').addEventListener('click', runPhrase);
@@ -818,14 +861,12 @@ function bindCalib() {
   });
 
   $('#calibPrev').addEventListener('click', () => showStep(Math.max(1, calib.step - 1)));
+  $('#calibSkip').addEventListener('click', () => showStep(Math.min(3, calib.step + 1)));
   $('#calibNext').addEventListener('click', async () => {
-    if (calib.step === 1) {
-      if (!calib.noise || !calib.level) return toast('Hacé las dos mediciones antes de seguir.', 'err');
-      return showStep(2);
-    }
-    if (calib.step === 2) {
-      if (!calib.results.length) return toast('Probá al menos una frase.', 'err');
-      return showStep(3);
+    if (calib.step < 3) {
+      // Si falta algo, el pie ya lo dice y queda el botón para seguir igual
+      if (stepPending(calib.step)) { updateCalibFooter(); return; }
+      return showStep(calib.step + 1);
     }
     await finishCalib();
   });
@@ -859,12 +900,17 @@ async function runPhrase() {
   if (!phrase) return;
   const btn = $('#btnPhrase');
   btn.disabled = true;
-  btn.innerHTML = '🔴 Escuchando… hablá ahora';
-  $('#phraseHeard').classList.add('hidden');
+  btn.innerHTML = '🔴 Escuchando…';
   $('#phraseDiff').classList.add('hidden');
+  const heardBox = $('#phraseHeard');
+  heardBox.classList.remove('hidden');
+  heardBox.innerHTML = '<b>Preparando</b>Abriendo el dictado…';
 
   try {
-    const res = await Calib.testPhrase(phrase, $('#selLang').value);
+    const res = await Calib.testPhrase(phrase, $('#selLang').value, st => {
+      if (st === 'listening') heardBox.innerHTML = '<b>Escuchando</b>Leé la frase en voz alta y natural.';
+      if (st === 'done') heardBox.innerHTML = '<b>Procesando</b>Comparando lo que dijiste…';
+    });
     calib.results.push(res);
     calib.suggestions = Calib.mergeSuggestions(
       calib.suggestions,
@@ -880,15 +926,27 @@ async function runPhrase() {
     }).join('');
     $('#phraseDiff').classList.remove('hidden');
     updateScore();
+    updateCalibFooter();
     btn.innerHTML = '🎤 Repetir frase';
     btn.disabled = false;
     $('#btnPhraseSkip').textContent = 'Siguiente frase →';
   } catch (err) {
     btn.disabled = false;
     btn.innerHTML = '🎤 Leer esta frase';
-    toast(err.message === 'unsupported'
-      ? 'Este navegador no tiene dictado. Probá con Chrome o Edge.'
-      : 'No se pudo escuchar la frase. Revisá el permiso del micrófono.', 'err', 5000);
+    const msg =
+      err.message === 'unsupported'
+        ? 'Este navegador no tiene dictado por voz. Podés seguir sin probar: vas a poder grabar audio y escribir, pero no transcribir.'
+      : err.message === 'no-start'
+        ? 'El dictado no llegó a arrancar. Suele pasar cuando el navegador no tiene servicio de voz o la app corre incrustada: probá abrirla en una pestaña propia, o seguí sin probar.'
+      : err.message === 'not-allowed' || err.message === 'service-not-allowed'
+        ? 'El navegador bloqueó el micrófono para el dictado. Habilitá el permiso y volvé a intentar.'
+      : err.message === 'network'
+        ? 'El servicio de dictado no respondió. Revisá la conexión y volvé a intentar.'
+        : 'No se pudo escuchar la frase. Revisá que el micrófono tenga permiso y volvé a intentar.';
+    $('#phraseHeard').innerHTML = `<b>No se pudo probar</b>${escapeHtml(msg)}`;
+    $('#phraseHeard').classList.remove('hidden');
+    $('#phraseDiff').classList.add('hidden');
+    updateCalibFooter();
   }
 }
 
