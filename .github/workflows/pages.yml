@@ -1,0 +1,39 @@
+# Publica la app en GitHub Pages cada vez que se sube un cambio.
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: [claude/voice-recording-transcription-app-30o8mc]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Una publicación a la vez, sin cancelar la que esté en curso
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # enablement activa Pages solo, sin tener que tocar la configuración a mano
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # El sitio es estático: se sube el repositorio tal cual
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
