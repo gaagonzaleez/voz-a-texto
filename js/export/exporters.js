@@ -31,27 +31,22 @@ export async function exportSession(session, fmt, extra = {}) {
 
   switch (fmt) {
     case 'pdf': {
-      download(buildPdf({ title, body, meta, footer: 'Página {n} de {total}' }), `${name}.pdf`);
-      break;
+      return report(await download(buildPdf({ title, body, meta, footer: 'Página {n} de {total}' }), `${name}.pdf`), 'PDF');
     }
     case 'docx': {
-      download(buildDocx({ title, body, meta }), `${name}.docx`);
-      break;
+      return report(await download(buildDocx({ title, body, meta }), `${name}.docx`), 'Word');
     }
     case 'txt': {
       // Formato pensado para pegar en Notas / Google Keep / cualquier bloc
       const txt = `${title}\n${'='.repeat(Math.min(title.length, 60))}\n${meta.join('\n')}\n\n${body}\n`;
-      download(new Blob([txt], { type: 'text/plain;charset=utf-8' }), `${name}.txt`);
-      break;
+      return report(await download(new Blob([txt], { type: 'text/plain;charset=utf-8' }), `${name}.txt`), 'Notas');
     }
     case 'md': {
       const md = `# ${title}\n\n${meta.map(m => `_${m}_`).join('  \n')}\n\n${body.replace(/\n/g, '\n\n').replace(/\n{3,}/g, '\n\n')}\n`;
-      download(new Blob([md], { type: 'text/markdown;charset=utf-8' }), `${name}.md`);
-      break;
+      return report(await download(new Blob([md], { type: 'text/markdown;charset=utf-8' }), `${name}.md`), 'Markdown');
     }
     case 'html': {
-      download(new Blob([htmlDoc(title, body, meta)], { type: 'text/html;charset=utf-8' }), `${name}.html`);
-      break;
+      return report(await download(new Blob([htmlDoc(title, body, meta)], { type: 'text/html;charset=utf-8' }), `${name}.html`), 'HTML');
     }
     case 'json': {
       const data = {
@@ -67,8 +62,7 @@ export async function exportSession(session, fmt, extra = {}) {
         exportedAt: new Date().toISOString(),
         app: 'Voz a Texto',
       };
-      download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${name}.json`);
-      break;
+      return report(await download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${name}.json`), 'JSON');
     }
     case 'clipboard': {
       await copyToClipboard(`${title}\n\n${body}`);
@@ -81,7 +75,13 @@ export async function exportSession(session, fmt, extra = {}) {
     default:
       throw new Error('Formato desconocido: ' + fmt);
   }
-  return `Descargando ${FORMATS[fmt]?.label || fmt}…`;
+}
+
+/** Mensaje según cómo terminó la descarga */
+function report(result, label) {
+  if (result === 'saved')    return `${label} guardado`;
+  if (result === 'declined') return 'Descarga cancelada';
+  return `Descargando ${label}…`;
 }
 
 export async function copyToClipboard(text) {

@@ -50,7 +50,22 @@ export function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-export function download(blob, filename) {
+/* ── Descarga de archivos ──────────────────────────────────
+   En un navegador normal se usa un enlace <a download>. Cuando la app
+   corre incrustada en un visor que bloquea las descargas (por ejemplo un
+   artifact de Claude), se le pide al anfitrión que guarde el archivo. */
+
+let saverPromise;
+function hostSaver() {
+  if (!saverPromise) {
+    saverPromise = (window.claude && typeof window.claude.use === 'function')
+      ? Promise.resolve(window.claude.use('downloads')).catch(() => null)
+      : Promise.resolve(null);
+  }
+  return saverPromise;
+}
+
+function anchorDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -59,6 +74,33 @@ export function download(blob, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/**
+ * @returns {Promise<'saved'|'declined'|'download'>}
+ * @throws {Error} con un mensaje listo para mostrar si el visor lo rechaza
+ */
+export async function download(blob, filename) {
+  const saver = await hostSaver();
+  if (!saver) { anchorDownload(blob, filename); return 'download'; }
+
+  try {
+    await saver.save({ filename, data: blob });
+    return 'saved';
+  } catch (err) {
+    const code = err?.code || 'unavailable';
+    const ext = (filename.split('.').pop() || '').toUpperCase();
+    if (code === 'declined') return 'declined';
+    if (code === 'rate_limited')
+      throw new Error('Hay otra descarga esperando confirmación. Probá de nuevo en unos segundos.');
+    if (code === 'extension_not_enabled' || code === 'rejected_extension')
+      throw new Error(`Esta vista no permite guardar archivos ${ext}. Usá Notas (.txt), Markdown (.md) o JSON, o abrí la app desde tu propio servidor para el resto de los formatos.`);
+    if (code === 'too_large')
+      throw new Error('El archivo pasa el límite de 16 MB de esta vista.');
+    // El anfitrión no puede guardar: se intenta el camino común
+    anchorDownload(blob, filename);
+    return 'download';
+  }
 }
 
 /** Nombre de archivo seguro a partir de un título */

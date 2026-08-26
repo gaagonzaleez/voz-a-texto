@@ -20,7 +20,7 @@ export function pickMime() {
 
 export function extFor(mime = '') {
   if (mime.includes('ogg')) return 'ogg';
-  if (mime.includes('mp4')) return 'm4a';
+  if (mime.includes('mp4')) return 'mp4';
   return 'webm';
 }
 

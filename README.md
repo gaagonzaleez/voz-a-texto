@@ -82,6 +82,10 @@ instaladas en tu sistema, con velocidad y tono regulables. Sirve para revisar el
 
 El PDF y el `.docx` se generan **dentro del navegador**, sin librerías externas ni servicios de terceros.
 
+> Si abrís la app incrustada en un visor que bloquea las descargas (por ejemplo un artifact de
+> Claude), la exportación le pide permiso al visor para guardar el archivo. Algunos visores sólo
+> admiten ciertos formatos; en ese caso la app te lo dice y podés usar Notas, Markdown o JSON.
+
 ---
 
 ## Cómo levantarla
@@ -102,8 +106,27 @@ npm start
 
 Después entrá a **http://localhost:8080**.
 
-Para usarla desde el celular o compartirla, subí la carpeta a cualquier hosting estático
-(GitHub Pages, Netlify, Vercel): son archivos sueltos, no hay nada que compilar.
+### Desde el celular
+
+En el teléfono **no sirve `localhost`**: eso apunta al propio celular, donde no hay ningún
+servidor. Además el micrófono sólo funciona con **HTTPS** (o en `localhost`, que es la excepción).
+Para usarla desde el celular hay que publicarla en algún lado:
+
+- **GitHub Pages** — gratis; en repositorios privados requiere cuenta de pago.
+- **Netlify / Vercel / Cloudflare Pages** — arrastrás la carpeta y te dan una URL con HTTPS.
+
+Son archivos sueltos, no hay nada que compilar.
+
+### Un solo archivo
+
+Si el lugar donde vas a publicarla acepta una sola página, `build.mjs` junta todo
+(HTML, CSS y los módulos JS) en un archivo autocontenido:
+
+```bash
+node build.mjs      # genera dist/voz-a-texto.html
+```
+
+Ese archivo ya está en el repo, listo para subir a cualquier hosting.
 
 ### Navegadores
 
@@ -133,6 +156,7 @@ Si abrís la app en un navegador sin soporte, aparece un aviso arriba y el resto
 
 ```
 index.html              pantalla completa de la app
+build.mjs               empaqueta todo en dist/voz-a-texto.html
 assets/styles.css       estilos (incluye responsive e impresión)
 js/
   app.js                orquesta todo: estado, UI y eventos

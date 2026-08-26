@@ -266,8 +266,11 @@ async function stopRecording() {
 
 function micError(err) {
   const name = err?.name || '';
+  const embedded = window.self !== window.top;
   if (name === 'NotAllowedError' || name === 'SecurityError')
-    return 'No diste permiso al micrófono. Habilitalo en el candado de la barra de direcciones.';
+    return embedded
+      ? 'La página incrustada no puede usar el micrófono. Abrí la app en una pestaña propia del navegador.'
+      : 'No diste permiso al micrófono. Habilitalo en el candado de la barra de direcciones.';
   if (name === 'NotFoundError' || name === 'OverconstrainedError')
     return 'No se encontró ese micrófono. Elegí otro en la lista.';
   if (name === 'NotReadableError')
@@ -599,7 +602,12 @@ function bindUI() {
     if (dl) {
       const a = await Audios.get(dl.dataset.audioDl);
       if (!a) return;
-      download(a.blob, `${slug(state.session.title)}-audio.${extFor(a.mime)}`);
+      try {
+        const r = await download(a.blob, `${slug(state.session.title)}-audio.${extFor(a.mime)}`);
+        if (r === 'saved') toast('Audio guardado', 'ok');
+      } catch (err) {
+        toast(err.message, 'err', 6000);
+      }
       return;
     }
     const del = e.target.closest('[data-audio-del]');
