@@ -1,0 +1,13 @@
+{
+  "name": "voz-a-texto",
+  "version": "1.0.0",
+  "description": "Grabación y transcripción continua por voz, con calibración previa, audios guardados y exportación a PDF, Word y notas.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes http-server -p 8080 -o",
+    "serve": "python3 -m http.server 8080"
+  },
+  "keywords": ["voz", "transcripción", "dictado", "speech-to-text", "grabadora"],
+  "license": "MIT"
+}

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voz a Texto — Grabación y transcripción continua</title>
+<meta name="description" content="Graba, pausa y retoma tu dictado. Todo se escribe en el mismo documento y se exporta a PDF, Word, notas y más.">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
+</head>
+<body>
+
+<div id="unsupported" class="banner hidden"></div>
+
+<div class="app">
+
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">🎙️</span>
+      <div>
+        <h1>Voz a Texto</h1>
+        <p>dictado continuo</p>
+      </div>
+    </div>
+
+    <button id="btnNewSession" class="btn btn-ghost btn-block">＋ Nuevo documento</button>
+
+    <div class="side-head">
+      <span>Documentos</span>
+      <span id="sessionCount" class="chip">0</span>
+    </div>
+    <ul id="sessionList" class="session-list"></ul>
+
+    <div class="side-foot">
+      <button id="btnOpenCalib" class="btn btn-ghost btn-block">🎚️ Calibrar mi voz</button>
+      <div id="calibStatus" class="calib-status">Sin calibrar</div>
+    </div>
+  </aside>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main class="main">
+
+    <header class="topbar">
+      <input id="docTitle" class="doc-title" placeholder="Título del documento" spellcheck="false">
+      <div class="topbar-right">
+        <span id="saveState" class="save-state">Guardado</span>
+        <span id="statusPill" class="pill pill-idle"><i></i><span>Detenido</span></span>
+      </div>
+    </header>
+
+    <!-- Grabador -->
+    <section class="recorder card">
+      <div class="rec-main">
+        <button id="btnRec" class="rec-btn" title="Empezar a grabar (Ctrl+Espacio)">
+          <span class="rec-dot"></span>
+          <span class="rec-label">REC</span>
+        </button>
+
+        <div class="rec-info">
+          <div id="timer" class="timer">00:00:00</div>
+          <div class="meter" title="Nivel de entrada del micrófono">
+            <div id="meterFill" class="meter-fill"></div>
+            <div id="meterPeak" class="meter-peak"></div>
+          </div>
+          <div id="recHint" class="rec-hint">Pulsá REC y hablá. Podés pausar y seguir más tarde: todo se escribe en el mismo documento.</div>
+        </div>
+
+        <div class="rec-actions">
+          <button id="btnPause" class="btn btn-soft" disabled>⏸ Pausar</button>
+          <button id="btnStop" class="btn btn-soft" disabled>⏹ Detener</button>
+        </div>
+      </div>
+
+      <div class="rec-options">
+        <label class="fld">
+          <span>Idioma</span>
+          <select id="selLang">
+            <option value="es-AR">Español (Argentina)</option>
+            <option value="es-ES">Español (España)</option>
+            <option value="es-MX">Español (México)</option>
+            <option value="es-CO">Español (Colombia)</option>
+            <option value="es-CL">Español (Chile)</option>
+            <option value="es-US">Español (EE. UU.)</option>
+            <option value="en-US">English (US)</option>
+            <option value="pt-BR">Português (Brasil)</option>
+            <option value="it-IT">Italiano</option>
+            <option value="fr-FR">Français</option>
+          </select>
+        </label>
+        <label class="fld">
+          <span>Micrófono</span>
+          <select id="selMic"><option value="">Predeterminado</option></select>
+        </label>
+        <label class="switch" title="Reemplaza automáticamente las palabras que el dictado suele confundir">
+          <input type="checkbox" id="optVocab" checked><span>Corregir con mi vocabulario</span>
+        </label>
+        <label class="switch" title='Decí "punto", "coma", "nueva línea", "nuevo párrafo"…'>
+          <input type="checkbox" id="optCommands" checked><span>Puntuación por voz</span>
+        </label>
+        <label class="switch" title="Mayúscula inicial y espaciado correcto">
+          <input type="checkbox" id="optSmart" checked><span>Formato automático</span>
+        </label>
+        <label class="switch" title="Guarda el audio para escucharlo después">
+          <input type="checkbox" id="optKeepAudio" checked><span>Guardar audio</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Documento -->
+    <section class="doc card">
+      <div class="doc-head">
+        <div class="doc-stats">
+          <span id="statWords">0 palabras</span>
+          <span id="statChars">0 caracteres</span>
+        </div>
+        <div class="doc-tools">
+          <button id="btnUndo" class="btn btn-mini" title="Deshacer el último tramo dictado">↶ Deshacer dictado</button>
+          <button id="btnClearDoc" class="btn btn-mini">Vaciar texto</button>
+        </div>
+      </div>
+      <textarea id="docText" class="doc-text" placeholder="Acá se va escribiendo todo lo que dictes…" spellcheck="true"></textarea>
+      <div id="interim" class="interim"></div>
+    </section>
+
+    <!-- Paneles -->
+    <section class="panels card">
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="rec">🎧 Grabaciones</button>
+        <button class="tab" data-tab="tts">🗣️ Escuchar con otras voces</button>
+        <button class="tab" data-tab="exp">📤 Exportar</button>
+        <button class="tab" data-tab="voc">📚 Vocabulario</button>
+      </nav>
+
+      <!-- Grabaciones -->
+      <div class="tab-panel is-active" data-panel="rec">
+        <div class="panel-head">
+          <p>Cada vez que grabás se guarda un audio en este documento. Podés escucharlo, descargarlo o borrarlo.</p>
+          <button id="btnDeleteAllAudio" class="btn btn-mini btn-danger">Eliminar todos los audios</button>
+        </div>
+        <ul id="audioList" class="audio-list"></ul>
+      </div>
+
+      <!-- TTS -->
+      <div class="tab-panel" data-panel="tts">
+        <p class="panel-head">Escuchá el texto del documento leído por otra voz.</p>
+        <div class="tts-grid">
+          <label class="fld"><span>Voz</span><select id="ttsVoice"></select></label>
+          <label class="fld"><span>Velocidad <b id="ttsRateVal">1.0×</b></span><input type="range" id="ttsRate" min="0.5" max="2" step="0.05" value="1"></label>
+          <label class="fld"><span>Tono <b id="ttsPitchVal">1.0</b></span><input type="range" id="ttsPitch" min="0" max="2" step="0.05" value="1"></label>
+        </div>
+        <div class="tts-actions">
+          <button id="ttsPlay" class="btn btn-primary">▶ Leer documento</button>
+          <button id="ttsPauseBtn" class="btn btn-soft" disabled>⏸ Pausar</button>
+          <button id="ttsStop" class="btn btn-soft" disabled>⏹ Detener</button>
+          <span id="ttsProgress" class="tts-progress"></span>
+        </div>
+      </div>
+
+      <!-- Exportar -->
+      <div class="tab-panel" data-panel="exp">
+        <p class="panel-head">Descargá el documento en el formato que necesites.</p>
+        <div class="export-grid">
+          <button class="exp" data-fmt="pdf"><b>PDF</b><span>documento imprimible</span></button>
+          <button class="exp" data-fmt="docx"><b>Word</b><span>.docx editable</span></button>
+          <button class="exp" data-fmt="txt"><b>Notas</b><span>.txt para Notas / Keep</span></button>
+          <button class="exp" data-fmt="md"><b>Markdown</b><span>.md para Notion / Obsidian</span></button>
+          <button class="exp" data-fmt="html"><b>HTML</b><span>página con formato</span></button>
+          <button class="exp" data-fmt="json"><b>JSON</b><span>respaldo con metadatos</span></button>
+          <button class="exp" data-fmt="clipboard"><b>Copiar</b><span>al portapapeles</span></button>
+          <button class="exp" data-fmt="print"><b>Imprimir</b><span>o guardar como PDF</span></button>
+        </div>
+      </div>
+
+      <!-- Vocabulario -->
+      <div class="tab-panel" data-panel="voc">
+        <p class="panel-head">Palabras que el dictado suele confundir. Se corrigen solas mientras hablás.</p>
+        <form id="vocForm" class="voc-form">
+          <input id="vocFrom" placeholder="Escucha… (ej: «gaston»)" required>
+          <span class="arrow">→</span>
+          <input id="vocTo" placeholder="Escribir… (ej: «Gastón»)" required>
+          <button class="btn btn-primary" type="submit">Agregar</button>
+        </form>
+        <ul id="vocList" class="voc-list"></ul>
+      </div>
+    </section>
+
+    <footer class="foot">
+      Tus documentos y grabaciones se guardan sólo en este navegador.
+      El dictado usa el motor de voz del navegador: en Chrome y Edge, el audio se procesa en la nube del proveedor.
+    </footer>
+  </main>
+</div>
+
+<!-- ═══════════ MODAL DE CALIBRACIÓN ═══════════ -->
+<div id="calibModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <header class="modal-head">
+      <h2>Calibrar mi voz</h2>
+      <button id="calibClose" class="icon-btn" aria-label="Cerrar">✕</button>
+    </header>
+
+    <ol class="steps">
+      <li class="step is-active" data-step="1"><b>1</b> Micrófono</li>
+      <li class="step" data-step="2"><b>2</b> Prueba de dicción</li>
+      <li class="step" data-step="3"><b>3</b> Mis palabras</li>
+    </ol>
+
+    <div class="modal-body">
+
+      <!-- Paso 1 -->
+      <div class="cstep is-active" data-cstep="1">
+        <p class="lead">Vamos a revisar que tu micrófono se escuche bien antes de empezar.</p>
+        <label class="fld">
+          <span>Micrófono</span>
+          <select id="calibMic"><option value="">Predeterminado</option></select>
+        </label>
+        <div class="meter meter-lg" title="Nivel de entrada">
+          <div id="calibMeterFill" class="meter-fill"></div>
+          <div id="calibMeterPeak" class="meter-peak"></div>
+        </div>
+        <div class="calib-tests">
+          <div class="ctest">
+            <div class="ctest-h"><b>A. Ruido de fondo</b><span id="noiseVerdict" class="tag">pendiente</span></div>
+            <p>Quedate en silencio 4 segundos.</p>
+            <button id="btnNoise" class="btn btn-soft">Medir silencio</button>
+          </div>
+          <div class="ctest">
+            <div class="ctest-h"><b>B. Volumen de tu voz</b><span id="levelVerdict" class="tag">pendiente</span></div>
+            <p>Hablá normal 5 segundos: contá del 1 al 10.</p>
+            <button id="btnLevel" class="btn btn-soft">Medir mi voz</button>
+          </div>
+        </div>
+        <div id="micAdvice" class="advice hidden"></div>
+      </div>
+
+      <!-- Paso 2 -->
+      <div class="cstep" data-cstep="2">
+        <p class="lead">Leé cada frase en voz alta y natural. Comparo lo que dijiste con lo que el dictado entendió, palabra por palabra.</p>
+        <div class="phrase-card">
+          <div class="phrase-meta">Frase <span id="phraseIdx">1</span> de <span id="phraseTotal">4</span></div>
+          <p id="phraseText" class="phrase-text"></p>
+          <div class="phrase-actions">
+            <button id="btnPhrase" class="btn btn-primary">🎤 Leer esta frase</button>
+            <button id="btnPhraseSkip" class="btn btn-ghost">Saltear</button>
+          </div>
+          <div id="phraseHeard" class="phrase-heard hidden"></div>
+          <div id="phraseDiff" class="phrase-diff hidden"></div>
+        </div>
+        <div id="scoreBox" class="score-box hidden">
+          <div class="score-num"><span id="scoreVal">0</span><small>%</small></div>
+          <div class="score-txt"><b id="scoreLabel"></b><p id="scoreTip"></p></div>
+        </div>
+      </div>
+
+      <!-- Paso 3 -->
+      <div class="cstep" data-cstep="3">
+        <p class="lead">Estas son las palabras que el dictado no entendió bien. Confirmá las correcciones y agregá tus nombres o términos propios.</p>
+        <ul id="suggestList" class="suggest-list"></ul>
+        <form id="calibVocForm" class="voc-form">
+          <input id="calibVocFrom" placeholder="Escucha…" required>
+          <span class="arrow">→</span>
+          <input id="calibVocTo" placeholder="Escribir…" required>
+          <button class="btn btn-soft" type="submit">Agregar</button>
+        </form>
+        <div class="advice">
+          <b>Consejo</b> Cuantas más correcciones cargues, menos errores vas a tener. También podés dictar la puntuación diciendo «punto», «coma», «nueva línea» o «nuevo párrafo».
+        </div>
+      </div>
+    </div>
+
+    <footer class="modal-foot">
+      <button id="calibPrev" class="btn btn-ghost">← Atrás</button>
+      <div id="calibMsg" class="calib-msg"></div>
+      <button id="calibNext" class="btn btn-primary">Siguiente →</button>
+    </footer>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
