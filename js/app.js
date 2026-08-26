@@ -11,6 +11,7 @@ import { applyVocabulary, applyVoiceCommands, joinChunk, normWord } from './text
 import { Reader, sortVoices } from './tts.js';
 import * as Calib from './calibration.js';
 import { exportSession } from './export/exporters.js';
+import { setupPWA } from './pwa.js';
 
 /* ═══════════════ Estado ═══════════════ */
 const state = {
@@ -45,6 +46,7 @@ async function init() {
   bindEngines();
   await refreshMicList();
   setupVoices();
+  setupPWA();
 }
 
 function checkSupport() {

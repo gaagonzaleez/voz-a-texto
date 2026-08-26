@@ -1,0 +1,21 @@
+{
+  "name": "Voz a Texto — dictado continuo",
+  "short_name": "Voz a Texto",
+  "description": "Grabá y transcribí sin parar: calibración de voz, pausar y retomar en el mismo documento, y exportación a PDF, Word y notas.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "voz-a-texto",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0e1117",
+  "theme_color": "#0e1117",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

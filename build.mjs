@@ -17,7 +17,10 @@ const js = execFileSync('npx', ['--yes', 'esbuild@0.24.0', 'js/app.js',
 const body = html
   .replace(/[\s\S]*<body>/, '')
   .replace(/<\/body>[\s\S]*/, '')
-  .replace(/<script type="module"[^>]*><\/script>/, '');
+  .replace(/<script type="module"[^>]*><\/script>/, '')
+  // El botón de instalar no aplica al archivo suelto: no hay manifiesto que servir
+  .replace(/<button id="btnInstall"[\s\S]*?<\/button>/, '')
+  .replace(/<div id="installHint"[\s\S]*?<\/div>/, '');
 
 const out = `<!doctype html>
 <html lang="es">

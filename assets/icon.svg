@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Voz a Texto">
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#232d40"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+    <radialGradient id="brillo" cx="50%" cy="38%" r="52%">
+      <stop offset="0" stop-color="#5b8cff" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#5b8cff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#fondo)"/>
+  <rect width="512" height="512" fill="url(#brillo)"/>
+
+  <!-- Micrófono -->
+  <g fill="none" stroke="#f2f6fc" stroke-width="26" stroke-linecap="round">
+    <rect x="211" y="118" width="90" height="160" rx="45" fill="#f2f6fc" stroke="none"/>
+    <path d="M158 250c0 54 44 98 98 98s98-44 98-98"/>
+    <path d="M256 348v46"/>
+  </g>
+
+  <!-- Punto de grabación -->
+  <circle cx="256" cy="163" r="18" fill="#ff4d5e"/>
+
+  <!-- Ondas de sonido -->
+  <g stroke="#5b8cff" stroke-width="22" stroke-linecap="round">
+    <path d="M186 424h140" opacity=".95"/>
+    <path d="M132 424h18" opacity=".55"/>
+    <path d="M362 424h18" opacity=".55"/>
+  </g>
+</svg>

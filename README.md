@@ -106,6 +106,22 @@ npm start
 
 Después entrá a **http://localhost:8080**.
 
+## Instalarla como app en el celular
+
+La app es una **PWA**: se instala desde el navegador, sin tiendas ni APK.
+
+- **Android / Chrome** — abrí el sitio y tocá **«📲 Instalar como app»** abajo en la barra
+  lateral (o el menú ⋮ → *Instalar aplicación*).
+- **iPhone / Safari** — botón Compartir → **Agregar a inicio**.
+
+Queda con ícono propio en la pantalla de inicio y se abre a pantalla completa, sin barra de
+direcciones. **Funciona sin internet**: podés escribir, grabar audio, escucharte y exportar.
+Lo único que necesita conexión es el dictado, porque lo resuelve el servicio de voz del
+navegador.
+
+Cada vez que la abrís busca la versión más nueva y usa la guardada sólo si no hay conexión,
+así que nunca se queda pegada en una versión vieja.
+
 ### Desde el celular
 
 En el teléfono **no sirve `localhost`**: eso apunta al propio celular, donde no hay ningún
@@ -156,6 +172,8 @@ Si abrís la app en un navegador sin soporte, aparece un aviso arriba y el resto
 
 ```
 index.html              pantalla completa de la app
+manifest.webmanifest    datos de la app instalable (nombre, íconos, colores)
+sw.js                   service worker: la app anda sin internet
 build.mjs               empaqueta todo en dist/voz-a-texto.html
 assets/styles.css       estilos (incluye responsive e impresión)
 js/
@@ -166,6 +184,7 @@ js/
   calibration.js        mediciones del micrófono, frases de prueba y puntaje
   textproc.js           vocabulario, puntuación por voz, formato y diff palabra por palabra
   tts.js                lectura del documento con otras voces
+  pwa.js                instalación como app y modo sin conexión
   util.js               helpers (tiempos, descargas, avisos)
   export/
     exporters.js        arma cada formato
