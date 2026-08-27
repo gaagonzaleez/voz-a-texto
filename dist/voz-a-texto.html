@@ -172,7 +172,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 /* ═══════════ Paneles / tabs ═══════════ */
 .panels{overflow:hidden}
-.tabs{display:flex;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs{display:flex;border-bottom:1px solid var(--line);overflow-x:auto;flex-wrap:wrap}
 .tab{
   background:none;border:0;border-bottom:2px solid transparent;padding:13px 18px;
   cursor:pointer;color:var(--tx3);font-size:14px;white-space:nowrap;
@@ -369,6 +369,17 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 /* En pantallas angostas el pie del asistente se apila: el mensaje arriba,
    los botones abajo, sin que se parta el texto de cada uno. */
+/* En el celular las pestañas no entran en una fila: se acomodan en dos, en
+   vez de esconderse a la derecha donde nadie las encuentra. */
+@media (max-width:760px){
+  .tabs{overflow-x:visible}
+  .tab{flex:1 1 auto;padding:11px 12px;font-size:13px;text-align:center}
+  /* Los encabezados de panel se apilan: si no, los botones quedan
+     estrujados contra el borde y el texto se parte letra por letra. */
+  .panel-head{flex-direction:column;align-items:flex-start}
+  .panel-head .btn{white-space:nowrap;align-self:flex-end}
+}
+
 @media (max-width:560px){
   .modal-box{width:100%}
   .modal-foot{flex-wrap:wrap;gap:8px}
@@ -526,7 +537,7 @@ button,input,select,textarea{font:inherit;color:inherit}
     <section class="panels card">
       <nav class="tabs" role="tablist">
         <button class="tab is-active" data-tab="rec">🎧 Grabaciones</button>
-        <button class="tab" data-tab="tts">🗣️ Escuchar con otras voces</button>
+        <button class="tab" data-tab="tts">🗣️ Otras voces</button>
         <button class="tab" data-tab="exp">📤 Exportar</button>
         <button class="tab" data-tab="voc">📚 Vocabulario</button>
         <button class="tab" data-tab="diag">🩺 Diagnóstico</button>
