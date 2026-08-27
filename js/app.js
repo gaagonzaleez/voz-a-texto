@@ -12,6 +12,7 @@ import { Reader, sortVoices } from './tts.js';
 import * as Calib from './calibration.js';
 import { exportSession, copyToClipboard } from './export/exporters.js';
 import { setupPWA } from './pwa.js';
+import { transcribirAudio, idiomaWhisper, MODELOS, SOPORTA_TRANSCRIPCION } from './transcribe-file.js';
 
 /* ═══════════════ Estado ═══════════════ */
 const state = {
@@ -19,7 +20,7 @@ const state = {
   sessions: [],
   vocab: [],
   profile: null,
-  prefs: { lang: 'es-AR', micId: '', vocab: true, commands: true, smart: true, keepAudio: true },
+  prefs: { lang: 'es-AR', micId: '', vocab: true, commands: true, smart: true, keepAudio: true, modelo: '' },
   mode: 'idle',              // idle | recording | paused
   segStart: 0,               // inicio del tramo actual
   segElapsed: 0,             // acumulado del tramo (descontando pausas)
@@ -49,6 +50,7 @@ async function init() {
   state.deviceConflict = await Settings.get('deviceConflict', false);
   updateCalibStatus();
   renderAudioNote();
+  renderModelos();
   await loadSessions();
   bindUI();
   bindEngines();
@@ -636,9 +638,11 @@ async function renderAudios() {
       </div>
       <audio controls preload="metadata" src="${url}"></audio>
       <div class="audio-btns">
+        ${SOPORTA_TRANSCRIPCION ? `<button class="btn btn-mini btn-primary" data-audio-trans="${a.id}">📝 Transcribir este audio</button>` : ''}
         <button class="btn btn-mini" data-audio-dl="${a.id}">⬇ Descargar</button>
         <button class="btn btn-mini btn-danger" data-audio-del="${a.id}">🗑 Eliminar</button>
       </div>
+      <div class="audio-trans hidden" data-trans-box="${a.id}"></div>
     </li>`;
   }).join('');
 
@@ -663,6 +667,98 @@ function fixDuration(el) {
     el.addEventListener('timeupdate', onSeek);
     el.currentTime = 1e101;
   }, { once: true });
+}
+
+/* ═══════════════ Transcribir una grabación guardada ═══════════════
+   El dictado en vivo necesita el micrófono; esto no. Se le pasa el archivo
+   ya grabado a un modelo Whisper que corre dentro del navegador, así que
+   sirve incluso en los teléfonos que no dejan grabar y dictar a la vez. */
+
+function renderModelos() {
+  const sel = $('#selModelo');
+  if (!sel) return;
+  if (!SOPORTA_TRANSCRIPCION) { sel.closest('.fld')?.classList.add('hidden'); return; }
+  sel.innerHTML = MODELOS.map(m =>
+    `<option value="${m.id}">${escapeHtml(m.nombre)} — ${escapeHtml(m.detalle)}</option>`).join('');
+  sel.value = state.prefs.modelo || MODELOS[0].id;
+}
+
+const FASES = {
+  decodificando: 'Preparando el audio…',
+  cargando: 'Cargando el modelo…',
+  descarga: 'Bajando el modelo por única vez',
+  'listo-modelo': 'Modelo listo',
+  transcribiendo: 'Transcribiendo',
+};
+
+async function transcribirGrabacion(id) {
+  const box = $(`[data-trans-box="${id}"]`);
+  const btn = $(`[data-audio-trans="${id}"]`);
+  if (!box || !btn) return;
+
+  const audio = await Audios.get(id);
+  if (!audio) return;
+
+  btn.disabled = true;
+  box.classList.remove('hidden');
+  box.innerHTML = '<div class="audio-trans-msg">Preparando el audio…</div>' +
+                  '<div class="audio-trans-barra"><i></i></div>';
+  const msg = box.querySelector('.audio-trans-msg');
+  const barra = box.querySelector('.audio-trans-barra i');
+
+  const modelo = $('#selModelo').value || MODELOS[0].id;
+  state.prefs.modelo = modelo;
+  savePrefs();
+  logDiag('transcribir', 'inicio', modelo);
+
+  try {
+    const texto = await transcribirAudio(audio.blob, {
+      modelo,
+      idioma: idiomaWhisper(state.session?.lang || state.prefs.lang),
+      onProgreso: p => {
+        const base = FASES[p.fase] || p.fase;
+        msg.textContent = p.pct != null ? `${base}… ${p.pct}%` : base + '…';
+        if (p.pct != null) barra.style.width = p.pct + '%';
+        if (p.fase === 'descarga') {
+          msg.textContent = `Bajando el modelo por única vez… ${p.pct}% (después queda guardado)`;
+        }
+      },
+    });
+
+    logDiag('transcribir', 'listo', `${countWords(texto)} palabras`);
+    if (!texto) {
+      box.innerHTML = '<div class="audio-trans-msg">No se entendió nada en esta grabación.</div>';
+      btn.disabled = false;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="audio-trans-msg">Transcripción lista · ${countWords(texto)} palabras</div>
+      <div class="audio-trans-texto">${escapeHtml(texto)}</div>
+      <div class="audio-trans-acciones">
+        <button class="btn btn-mini btn-primary" data-trans-add="${id}">Agregar al documento</button>
+        <button class="btn btn-mini" data-trans-copy="${id}">Copiar</button>
+        <button class="btn btn-mini" data-trans-close="${id}">Cerrar</button>
+      </div>`;
+    box.dataset.texto = texto;
+    btn.disabled = false;
+    btn.textContent = '📝 Transcribir de nuevo';
+  } catch (err) {
+    logDiag('transcribir', 'ERROR', err.message);
+    box.innerHTML = `<div class="audio-trans-msg bad"><b>No se pudo transcribir</b><br>${escapeHtml(explicarErrorWhisper(err))}</div>`;
+    btn.disabled = false;
+  }
+}
+
+function explicarErrorWhisper(err) {
+  const m = (err?.message || '').toLowerCase();
+  if (m.includes('fetch') || m.includes('network') || m.includes('failed to load'))
+    return 'No se pudo bajar el modelo. Necesita internet la primera vez: revisá la conexión y volvé a intentar.';
+  if (m.includes('memory') || m.includes('allocation'))
+    return 'El teléfono se quedó sin memoria. Probá con la calidad «Rápido» o con una grabación más corta.';
+  if (m.includes('decode') || m.includes('decodificar'))
+    return 'No se pudo leer el archivo de audio.';
+  return err?.message || 'Error desconocido.';
 }
 
 /* ═══════════════ Voces de lectura ═══════════════ */
@@ -850,6 +946,36 @@ function bindUI() {
       }
       return;
     }
+    const tr = e.target.closest('[data-audio-trans]');
+    if (tr) { transcribirGrabacion(tr.dataset.audioTrans); return; }
+
+    const add = e.target.closest('[data-trans-add]');
+    if (add) {
+      const box = $(`[data-trans-box="${add.dataset.transAdd}"]`);
+      const texto = box?.dataset.texto || '';
+      if (!texto) return;
+      const ta = $('#docText');
+      state.undoStack.push(ta.value);
+      ta.value = ta.value.trim() ? ta.value.replace(/\s*$/, '\n\n') + texto : texto;
+      state.session.text = ta.value;
+      updateStats();
+      touch();
+      toast('Transcripción agregada al documento.', 'ok');
+      ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    const cp = e.target.closest('[data-trans-copy]');
+    if (cp) {
+      const box = $(`[data-trans-box="${cp.dataset.transCopy}"]`);
+      await copyToClipboard(box?.dataset.texto || '');
+      toast('Copiado.', 'ok');
+      return;
+    }
+
+    const cl = e.target.closest('[data-trans-close]');
+    if (cl) { $(`[data-trans-box="${cl.dataset.transClose}"]`)?.classList.add('hidden'); return; }
+
     const del = e.target.closest('[data-audio-del]');
     if (del) {
       if (!confirm('¿Eliminar esta grabación? El texto transcripto se conserva.')) return;

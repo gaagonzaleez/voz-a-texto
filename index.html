@@ -155,9 +155,13 @@
       <!-- Grabaciones -->
       <div class="tab-panel is-active" data-panel="rec">
         <div class="panel-head">
-          <p>Cada vez que grabás se guarda un audio en este documento. Podés escucharlo, descargarlo o borrarlo.</p>
+          <p>Cada vez que grabás se guarda un audio en este documento. Podés escucharlo, transcribirlo, descargarlo o borrarlo.</p>
           <button id="btnDeleteAllAudio" class="btn btn-mini btn-danger">Eliminar todos los audios</button>
         </div>
+        <label class="fld fld-inline">
+          <span>Calidad de la transcripción</span>
+          <select id="selModelo"></select>
+        </label>
         <ul id="audioList" class="audio-list"></ul>
       </div>
 

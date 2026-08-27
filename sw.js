@@ -9,7 +9,7 @@
    voz del navegador). Sin conexión podés escribir, grabar audio, escuchar
    tus grabaciones y exportar. */
 
-const VERSION = 'v8';
+const VERSION = 'v9';
 const CACHE = `voz-a-texto-${VERSION}`;
 const TIMEOUT_MS = 3500;
 
@@ -24,6 +24,8 @@ const SHELL = [
   './assets/apple-touch-icon.png',
   './js/app.js',
   './js/pwa.js',
+  './js/transcribe-file.js',
+  './js/whisper-worker.js',
   './js/db.js',
   './js/util.js',
   './js/recorder.js',
@@ -63,6 +65,18 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
+
+    /* La librería de transcripción pesa más de 20 MB: con el límite de
+       tiempo de abajo nunca llegaría a bajar en un celular. Para esos
+       archivos, que además no cambian nunca, se usa la copia guardada y
+       se baja sin apuro la primera vez. */
+    if (url.pathname.includes('/vendor/')) {
+      const guardado = await cache.match(request);
+      if (guardado) return guardado;
+      const bajado = await fetch(request);
+      if (bajado && bajado.ok) cache.put(request, bajado.clone());
+      return bajado;
+    }
 
     try {
       const fresh = await withTimeout(fetch(request), TIMEOUT_MS);

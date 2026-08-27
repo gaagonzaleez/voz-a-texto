@@ -63,7 +63,22 @@ Cada vez que grabás se guarda el audio dentro del documento (podés desactivarl
 > detecta sola a los pocos segundos: te avisa y te ofrece apagar el guardado de audio con un
 > toque, sin cortar la sesión. Lo que se grabó hasta ese momento se conserva.
 
-### 5. Escuchar con otras voces
+### 5. Transcribir una grabación guardada
+
+El dictado en vivo necesita el micrófono; esto no. En **🎧 Grabaciones**, cada audio tiene el
+botón **«📝 Transcribir este audio»**: le pasa el archivo ya grabado a un modelo Whisper que
+corre **dentro del navegador**, sin servidor ni cuentas.
+
+Sirve justo para los teléfonos que no dejan grabar y dictar a la vez: grabás primero, transcribís
+después.
+
+- Elegís la calidad: **Rápido** (~40 MB), **Preciso** (~80 MB) o **Máximo** (~250 MB).
+- La primera vez baja el modelo y queda guardado en el navegador; después no descarga más nada.
+- Tarda: en un celular puede llevar varios minutos por cada minuto de audio. Podés dejarlo
+  trabajando.
+- Cuando termina, podés agregar el texto al documento o copiarlo.
+
+### 6. Escuchar con otras voces
 
 En **🗣️ Escuchar con otras voces** el documento se lee en voz alta con cualquiera de las voces
 instaladas en tu sistema, con velocidad y tono regulables. Sirve para revisar el texto sin leerlo.
@@ -71,7 +86,7 @@ instaladas en tu sistema, con velocidad y tono regulables. Sirve para revisar el
 > Las voces que aparecen son las de tu sistema operativo. Si la lista está vacía, instalá voces
 > desde la configuración del sistema (en Windows: *Configuración → Hora e idioma → Voz*).
 
-### 6. Exportar
+### 7. Exportar
 
 | Formato | Archivo | Para qué |
 |---|---|---|
@@ -176,6 +191,7 @@ Si abrís la app en un navegador sin soporte, aparece un aviso arriba y el resto
 
 ```
 index.html              pantalla completa de la app
+vendor/transformers/    librería de IA incorporada (Apache-2.0)
 manifest.webmanifest    datos de la app instalable (nombre, íconos, colores)
 sw.js                   service worker: la app anda sin internet
 build.mjs               empaqueta todo en dist/voz-a-texto.html
@@ -189,6 +205,8 @@ js/
   textproc.js           vocabulario, puntuación por voz, formato y diff palabra por palabra
   tts.js                lectura del documento con otras voces
   pwa.js                instalación como app y modo sin conexión
+  transcribe-file.js    transcribe grabaciones ya guardadas (decodifica el audio)
+  whisper-worker.js     corre el modelo Whisper en segundo plano
   util.js               helpers (tiempos, descargas, avisos)
   export/
     exporters.js        arma cada formato

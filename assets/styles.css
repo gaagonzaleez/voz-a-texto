@@ -178,6 +178,19 @@ button,input,select,textarea{font:inherit;color:inherit}
 .panel-head p{margin:0}
 
 /* Lista de audios */
+.fld-inline{flex-direction:row;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.fld-inline>span{text-transform:none;font-size:12.5px;color:var(--tx2);letter-spacing:0}
+.audio-trans{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:11px 13px;font-size:13px}
+.audio-trans-barra{height:6px;background:var(--card);border-radius:4px;overflow:hidden;margin:8px 0 6px}
+.audio-trans-barra i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+.audio-trans-msg{font-size:12.5px;color:var(--tx2)}
+.audio-trans-msg.bad{color:var(--bad)}
+.audio-trans-texto{
+  margin-top:9px;padding:11px 13px;background:var(--card2);border:1px solid var(--line);
+  border-radius:9px;font-size:14px;line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;
+}
+.audio-trans-acciones{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+
 .audio-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .audio-item{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:12px 14px;display:flex;flex-direction:column;gap:9px}
 .audio-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
