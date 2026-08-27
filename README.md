@@ -59,6 +59,10 @@ Cada vez que grabás se guarda el audio dentro del documento (podés desactivarl
 - descargar el audio,
 - **eliminar** una grabación (el texto transcripto se conserva) o borrarlas todas.
 
+> **Si tu teléfono no deja grabar y dictar a la vez** (pasa en varios Android), la app lo
+> detecta sola a los pocos segundos: te avisa y te ofrece apagar el guardado de audio con un
+> toque, sin cortar la sesión. Lo que se grabó hasta ese momento se conserva.
+
 ### 5. Escuchar con otras voces
 
 En **🗣️ Escuchar con otras voces** el documento se lee en voz alta con cualquiera de las voces

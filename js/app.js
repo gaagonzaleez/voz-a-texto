@@ -26,6 +26,10 @@ const state = {
   timerId: 0,
   undoStack: [],
   audioUrls: [],
+  // Detección del conflicto "grabar y dictar a la vez" (típico de Android)
+  gotResult: false,
+  sawSound: false,
+  conflictTimer: 0,
 };
 
 const recorder = new Recorder();
@@ -205,15 +209,20 @@ async function startRecording() {
   state.mode = 'recording';
   state.segStart = performance.now();
   state.segElapsed = 0;
+  state.gotResult = false;
+  state.sawSound = false;
   startTimer();
   setStatus('recording');
+  hideRecAlert();
   transcriber.start($('#selLang').value);
+  vigilarTranscripcion();
 }
 
 function pauseRecording() {
   if (state.mode !== 'recording') return;
   recorder.pause();
   transcriber.stop();
+  clearTimeout(state.conflictTimer);
   state.segElapsed += performance.now() - state.segStart;
   state.mode = 'paused';
   stopTimer();
@@ -235,9 +244,11 @@ async function resumeRecording() {
   }
   state.mode = 'recording';
   state.segStart = performance.now();
+  state.gotResult = false;
   startTimer();
   setStatus('recording');
   transcriber.start($('#selLang').value);
+  vigilarTranscripcion();
 }
 
 async function stopRecording() {
@@ -246,6 +257,8 @@ async function stopRecording() {
 
   transcriber.stop();
   stopTimer();
+  clearTimeout(state.conflictTimer);
+  hideRecAlert();
   setStatus('guardando');
 
   const blob = await recorder.stop();
@@ -254,18 +267,7 @@ async function stopRecording() {
   const dictated = Math.round(state.segElapsed);
   state.session.dictatedMs = (state.session.dictatedMs || 0) + dictated;
 
-  if (blob && blob.size > 0 && state.prefs.keepAudio) {
-    let duration = await blobDuration(blob);
-    if (!duration) duration = dictated;
-    await Audios.put({
-      id: 'aud-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      sessionId: state.session.id,
-      blob, mime: blob.type, size: blob.size,
-      duration, createdAt: Date.now(),
-    });
-    await renderAudios();
-    toast('Grabación guardada. La podés escuchar en «Grabaciones».', 'ok');
-  }
+  await guardarAudio(blob, dictated);
 
   state.mode = 'idle';
   state.segElapsed = 0;
@@ -274,6 +276,90 @@ async function stopRecording() {
   $('#interim').textContent = '';
   setStatus('idle');
   touch();
+}
+
+/* ── Cuando el teléfono no deja grabar y dictar a la vez ──────────────
+   Varios Android le dan el micrófono a una sola cosa: si está grabando el
+   audio, el motor de dictado se queda mudo. Se detecta solo y se ofrece
+   apagar el guardado de audio sin cortar la sesión. */
+
+function vigilarTranscripcion() {
+  clearTimeout(state.conflictTimer);
+  state.conflictTimer = setTimeout(() => {
+    if (state.mode !== 'recording' || state.gotResult) return;
+
+    if (state.prefs.keepAudio && state.sawSound) {
+      mostrarRecAlert(
+        '<b>Estoy grabando pero no transcribo</b>' +
+        'Tu teléfono no permite grabar el audio y dictar al mismo tiempo. ' +
+        'Puedo apagar el guardado de audio y seguir dictando sin cortar lo que venís haciendo. ' +
+        'La grabación de hasta acá se guarda igual.',
+        true);
+    } else if (!state.sawSound && state.prefs.keepAudio) {
+      mostrarRecAlert(
+        '<b>No estoy escuchando nada</b>' +
+        'Revisá que el micrófono no esté silenciado y que estés hablando cerca del teléfono.',
+        false, true);
+    } else if (!state.gotResult) {
+      mostrarRecAlert(
+        '<b>Todavía no transcribí nada</b>' +
+        'El dictado necesita internet: revisá la conexión. Si estás en silencio, ignorá este aviso.',
+        false, true);
+    }
+  }, 14000);
+}
+
+function mostrarRecAlert(html, conBoton, info = false) {
+  const box = $('#recAlert');
+  box.querySelector('.rec-alert-txt').innerHTML = html;
+  $('#btnFixConflict').classList.toggle('hidden', !conBoton);
+  box.classList.toggle('is-info', info);
+  box.classList.remove('hidden');
+}
+
+function hideRecAlert() {
+  $('#recAlert').classList.add('hidden');
+}
+
+/** Guarda lo grabado, suelta el micrófono y sigue dictando, sin cortar la sesión. */
+async function apagarAudioYSeguir() {
+  const btn = $('#btnFixConflict');
+  btn.disabled = true;
+
+  const blob = await recorder.stop();
+  recorder.closeMic();
+  setMeter(0, 0);
+  await guardarAudio(blob, Math.round(state.segElapsed + (performance.now() - state.segStart)));
+
+  state.prefs.keepAudio = false;
+  $('#optKeepAudio').checked = false;
+  savePrefs();
+
+  // El motor se reinicia ahora que el micrófono quedó libre
+  transcriber.stop();
+  state.gotResult = false;
+  transcriber.start($('#selLang').value);
+  vigilarTranscripcion();
+
+  btn.disabled = false;
+  hideRecAlert();
+  setStatus('recording');
+  toast('Listo: seguí hablando, ahora sí te transcribo.', 'ok', 5000);
+}
+
+/** Guarda un blob de audio dentro del documento actual. */
+async function guardarAudio(blob, msAproximados) {
+  if (!blob || !blob.size || !state.session) return;
+  let duration = await blobDuration(blob);
+  if (!duration) duration = msAproximados;
+  await Audios.put({
+    id: 'aud-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    sessionId: state.session.id,
+    blob, mime: blob.type, size: blob.size,
+    duration, createdAt: Date.now(),
+  });
+  await renderAudios();
+  toast('Grabación guardada. La podés escuchar en «Grabaciones».', 'ok');
 }
 
 function micError(err) {
@@ -345,6 +431,7 @@ function setMeter(level, peak) {
 function bindEngines() {
   recorder.addEventListener('level', e => {
     setMeter(e.detail.level, e.detail.peak);
+    if (state.mode === 'recording' && e.detail.level > 0.14) state.sawSound = true;
     if (calib.open) {
       $('#calibMeterFill').style.width = (e.detail.level * 100).toFixed(1) + '%';
       $('#calibMeterPeak').style.left = (e.detail.peak * 100).toFixed(1) + '%';
@@ -354,8 +441,14 @@ function bindEngines() {
   });
   recorder.addEventListener('error', () => toast('Se cortó la grabación de audio.', 'err'));
 
-  transcriber.addEventListener('final', e => appendChunk(e.detail.text));
+  transcriber.addEventListener('final', e => {
+    state.gotResult = true;
+    clearTimeout(state.conflictTimer);
+    hideRecAlert();
+    appendChunk(e.detail.text);
+  });
   transcriber.addEventListener('interim', e => {
+    if (e.detail.text) { state.gotResult = true; clearTimeout(state.conflictTimer); hideRecAlert(); }
     let t = e.detail.text;
     if (t && state.prefs.vocab) t = applyVocabulary(t, state.vocab);
     $('#interim').textContent = t;
@@ -524,6 +617,7 @@ function bindUI() {
     else if (state.mode === 'paused') resumeRecording();
   });
   $('#btnStop').addEventListener('click', stopRecording);
+  $('#btnFixConflict').addEventListener('click', apagarAudioYSeguir);
 
   document.addEventListener('keydown', e => {
     if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); $('#btnRec').click(); }
