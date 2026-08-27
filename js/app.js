@@ -31,6 +31,7 @@ const state = {
   sawSound: false,
   conflictTimer: 0,
   diag: [],
+  deviceConflict: false,
 };
 
 const recorder = new Recorder();
@@ -45,7 +46,9 @@ async function init() {
   await loadPrefs();
   await loadVocab();
   state.profile = await Settings.get('profile', null);
+  state.deviceConflict = await Settings.get('deviceConflict', false);
   updateCalibStatus();
+  renderAudioNote();
   await loadSessions();
   bindUI();
   bindEngines();
@@ -133,7 +136,7 @@ function renderSessions() {
 
 async function openSession(id) {
   if (state.mode !== 'idle') {
-    toast('Detené la grabación antes de cambiar de documento.', 'err');
+    toast('Detené la grabación para cambiar de documento. Lo que dictaste está en el texto de abajo.', 'err', 5000);
     return;
   }
   const s = await Sessions.get(id);
@@ -147,6 +150,9 @@ async function openSession(id) {
   updateStats();
   await Settings.set('lastSession', id);
   renderSessions();
+  if (window.matchMedia?.('(max-width:900px)').matches) {
+    $('#docText').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
   await renderAudios();
   setupVoices();
 }
@@ -290,6 +296,13 @@ function vigilarTranscripcion() {
     if (state.mode !== 'recording' || state.gotResult) return;
 
     if (state.prefs.keepAudio && state.sawSound) {
+      // Este teléfono ya demostró que no puede con las dos cosas: se recuerda
+      // para avisarlo antes de grabar, y no a los 14 segundos de cada intento.
+      if (!state.deviceConflict) {
+        state.deviceConflict = true;
+        Settings.set('deviceConflict', true);
+        renderAudioNote();
+      }
       mostrarRecAlert(
         '<b>Estoy grabando pero no transcribo</b>' +
         'Tu teléfono no permite grabar el audio y dictar al mismo tiempo. ' +
@@ -335,6 +348,7 @@ async function apagarAudioYSeguir() {
   state.prefs.keepAudio = false;
   $('#optKeepAudio').checked = false;
   savePrefs();
+  renderAudioNote();
 
   // El motor se reinicia ahora que el micrófono quedó libre
   transcriber.stop();
@@ -517,6 +531,21 @@ function appendChunk(raw) {
   $('#interim').textContent = '';
   updateStats();
   touch();
+}
+
+/** Aviso fijo cuando este teléfono no permite grabar y dictar a la vez. */
+function renderAudioNote() {
+  const el = $('#audioNote');
+  if (!el) return;
+  if (!state.deviceConflict) { el.classList.add('hidden'); return; }
+
+  el.innerHTML = state.prefs.keepAudio
+    ? '<b>En este teléfono tenés que elegir.</b> Con «Guardar audio» activado se graba el audio ' +
+      'pero <b>no se transcribe</b>. Destildalo para que el dictado escriba, o dejalo así si esta ' +
+      'vez sólo querés el audio.'
+    : '<b>Modo dictado.</b> Se transcribe lo que decís, sin guardar el audio. ' +
+      'Tu teléfono no permite las dos cosas a la vez: si activás «Guardar audio», deja de escribir.';
+  el.classList.remove('hidden');
 }
 
 /* ═══════════════ Diagnóstico ═══════════════
@@ -716,7 +745,11 @@ function bindUI() {
   });
   for (const [id, key] of [['#optVocab', 'vocab'], ['#optCommands', 'commands'],
                            ['#optSmart', 'smart'], ['#optKeepAudio', 'keepAudio']]) {
-    $(id).addEventListener('change', e => { state.prefs[key] = e.target.checked; savePrefs(); });
+    $(id).addEventListener('change', e => {
+      state.prefs[key] = e.target.checked;
+      savePrefs();
+      if (key === 'keepAudio') renderAudioNote();
+    });
   }
 
   // Documento
@@ -779,7 +812,15 @@ function bindUI() {
       return;
     }
     const item = e.target.closest('[data-session]');
-    if (item) openSession(item.dataset.session);
+    if (!item) return;
+
+    // El documento que ya está abierto no se "abre": se lleva la vista al texto.
+    // En el celular la lista está arriba y el texto queda lejos, abajo.
+    if (item.dataset.session === state.session?.id) {
+      $('#docText').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    openSession(item.dataset.session);
   });
 
   // Pestañas
