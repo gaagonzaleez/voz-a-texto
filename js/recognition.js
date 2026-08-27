@@ -9,38 +9,71 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 export const isSupported = !!SR;
 
 export class Transcriber extends EventTarget {
-  constructor({ lang = 'es-AR', maxAlternatives = 3 } = {}) {
+  constructor({ lang = 'es-AR', maxAlternatives = 1 } = {}) {
     super();
     this.lang = lang;
     this.maxAlternatives = maxAlternatives;
     this.active = false;          // el usuario quiere dictar
     this.running = false;         // el motor está escuchando ahora
-    this.rec = null;
     this.preferredTerms = [];     // vocabulario propio: desempata alternativas
+    this._rec = null;
+    this._gen = 0;                // generación: invalida motores viejos
     this._restartTimer = 0;
     this._watchdog = 0;
+    this._idleTicks = 0;
     this._lastActivity = 0;
     this._backoff = 300;
-    this._fatal = null;
   }
 
   get supported() { return isSupported; }
+  get rec() { return this._rec; }
 
-  _build() {
+  /** Traza para el panel de diagnóstico */
+  _log(evento, detalle = '') {
+    this.dispatchEvent(new CustomEvent('log', { detail: { evento, detalle, t: Date.now() } }));
+  }
+
+  /* Desconecta y frena el motor actual.
+     Subir la generación es lo importante: los eventos que lleguen tarde del
+     motor viejo quedan huérfanos y no tocan el estado del nuevo. Sin esto,
+     el 'end' de un motor descartado disparaba otro reinicio y terminaban dos
+     o tres motores peleando por el micrófono — que en Android deja la
+     sesión de voz muerta hasta recargar. */
+  _kill() {
+    this._gen++;
+    const rec = this._rec;
+    this._rec = null;
+    this.running = false;
+    if (!rec) return;
+    rec.onstart = rec.onresult = rec.onerror = rec.onend = null;
+    try { rec.abort(); } catch {}
+    try { rec.stop(); } catch {}
+  }
+
+  /** Crea y arranca un motor nuevo, descartando el anterior. */
+  _spawn() {
+    this._kill();
+    const gen = this._gen;
+    const mio = () => gen === this._gen;      // ¿sigo siendo el motor vigente?
+
     const rec = new SR();
     rec.lang = this.lang;
-    rec.continuous = true;
+    rec.continuous = true;        // en Android se ignora: por eso el reinicio
     rec.interimResults = true;
     rec.maxAlternatives = this.maxAlternatives;
 
     rec.onstart = () => {
+      if (!mio()) return;
       this.running = true;
+      this._idleTicks = 0;
       this._backoff = 300;
       this._lastActivity = Date.now();
+      this._log('escuchando');
       this.dispatchEvent(new Event('listening'));
     };
 
     rec.onresult = e => {
+      if (!mio()) return;
       this._lastActivity = Date.now();
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -48,6 +81,7 @@ export class Transcriber extends EventTarget {
         if (result.isFinal) {
           const text = this._bestAlternative(result);
           if (text.trim()) {
+            this._log('texto', text.trim().slice(0, 40));
             this.dispatchEvent(new CustomEvent('final', {
               detail: { text: text.trim(), confidence: result[0].confidence ?? null },
             }));
@@ -60,26 +94,25 @@ export class Transcriber extends EventTarget {
     };
 
     rec.onerror = e => {
+      if (!mio()) return;
       const err = e.error;
-      // 'no-speech' y 'aborted' son normales: simplemente se reinicia
+      this._log('error', err);
+      // 'no-speech' y 'aborted' son normales: se reinicia y sigue
       if (err === 'not-allowed' || err === 'service-not-allowed') {
-        this._fatal = err;
         this.active = false;
         this.dispatchEvent(new CustomEvent('error', {
-          detail: { code: err, message: 'El navegador bloqueó el micrófono. Habilitá el permiso y volvé a intentar.' },
+          detail: { code: err, message: 'El navegador bloqueó el micrófono para el dictado. Habilitá el permiso y volvé a intentar.' },
         }));
       } else if (err === 'audio-capture') {
-        this._fatal = err;
         this.active = false;
         this.dispatchEvent(new CustomEvent('error', {
-          detail: { code: err, message: 'No se detecta ningún micrófono conectado.' },
+          detail: { code: err, message: 'El dictado no pudo tomar el micrófono. Si estás grabando audio, apagá «Guardar audio».' },
         }));
       } else if (err === 'network') {
         this.dispatchEvent(new CustomEvent('warn', {
-          detail: { code: err, message: 'Problema de red con el servicio de dictado. Reintentando…' },
+          detail: { code: err, message: 'El servicio de dictado no responde. Revisá la conexión: reintentando…' },
         }));
       } else if (err === 'language-not-supported') {
-        this._fatal = err;
         this.active = false;
         this.dispatchEvent(new CustomEvent('error', {
           detail: { code: err, message: 'Ese idioma no está disponible en este navegador.' },
@@ -88,12 +121,31 @@ export class Transcriber extends EventTarget {
     };
 
     rec.onend = () => {
+      if (!mio()) return;
       this.running = false;
+      this._log('fin de turno');
       this.dispatchEvent(new Event('ended'));
-      if (this.active) this._scheduleRestart();
+      this._planRestart();
     };
 
-    return rec;
+    this._rec = rec;
+    try {
+      rec.start();
+      this._log('arrancando');
+    } catch (err) {
+      this._log('no arrancó', err?.name || String(err));
+      this._backoff = Math.min(this._backoff * 2, 4000);
+      this._planRestart();
+    }
+  }
+
+  /** Un único reinicio pendiente a la vez. */
+  _planRestart(ms = this._backoff) {
+    if (!this.active) return;
+    clearTimeout(this._restartTimer);
+    this._restartTimer = setTimeout(() => {
+      if (this.active) this._spawn();
+    }, ms);
   }
 
   /** Entre las alternativas, prefiere la que contenga palabras de mi vocabulario. */
@@ -115,30 +167,29 @@ export class Transcriber extends EventTarget {
     return best;
   }
 
-  _scheduleRestart() {
-    clearTimeout(this._restartTimer);
-    this._restartTimer = setTimeout(() => {
-      if (!this.active) return;
-      try {
-        this.rec = this._build();
-        this.rec.start();
-      } catch {
-        this._backoff = Math.min(this._backoff * 2, 5000);
-        this._scheduleRestart();
-      }
-    }, this._backoff);
-  }
-
-  /** Vigila que el motor siga vivo aunque no dispare 'end' (pasa en sesiones largas). */
+  /* Vigila que el motor siga vivo. Sólo actúa tras dos rondas caído, para no
+     pisar un reinicio que ya está en camino. */
   _startWatchdog() {
     clearInterval(this._watchdog);
+    this._idleTicks = 0;
     this._watchdog = setInterval(() => {
       if (!this.active) return;
-      if (!this.running) { this._scheduleRestart(); return; }
-      // Si hace más de 25 s que no llega nada, se reinicia por las dudas
+
+      if (!this.running) {
+        this._idleTicks++;
+        if (this._idleTicks >= 2) {
+          this._idleTicks = 0;
+          this._log('vigilante', 'motor caído, reiniciando');
+          this._planRestart(200);
+        }
+        return;
+      }
+
+      this._idleTicks = 0;
       if (Date.now() - this._lastActivity > 25000) {
         this._lastActivity = Date.now();
-        try { this.rec.stop(); } catch {}
+        this._log('vigilante', 'sin actividad, reiniciando');
+        this._planRestart(200);
       }
     }, 5000);
   }
@@ -146,22 +197,16 @@ export class Transcriber extends EventTarget {
   start(lang = this.lang) {
     if (!isSupported) {
       this.dispatchEvent(new CustomEvent('error', {
-        detail: { code: 'unsupported', message: 'Este navegador no tiene dictado por voz. Usá Chrome o Edge de escritorio.' },
+        detail: { code: 'unsupported', message: 'Este navegador no tiene dictado por voz. Usá Chrome o Edge.' },
       }));
       return false;
     }
     this.lang = lang;
-    this._fatal = null;
     this.active = true;
+    this._backoff = 300;
     this._lastActivity = Date.now();
-    if (!this.running) {
-      try {
-        this.rec = this._build();
-        this.rec.start();
-      } catch {
-        this._scheduleRestart();
-      }
-    }
+    this._log('inicio', lang);
+    this._spawn();
     this._startWatchdog();
     return true;
   }
@@ -170,11 +215,8 @@ export class Transcriber extends EventTarget {
     this.active = false;
     clearTimeout(this._restartTimer);
     clearInterval(this._watchdog);
-    if (this.rec) {
-      try { this.rec.stop(); } catch {}
-      try { this.rec.abort(); } catch {}
-    }
-    this.running = false;
+    this._kill();
+    this._log('detenido');
     this.dispatchEvent(new CustomEvent('interim', { detail: { text: '' } }));
   }
 
@@ -188,6 +230,11 @@ export class Transcriber extends EventTarget {
     this.preferredTerms = (terms || [])
       .map(t => String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim())
       .filter(Boolean);
+    // Se pide UNA sola alternativa, igual que la prueba de la calibración, que
+    // es el camino que sí funciona en Android. Pedir varias era la única
+    // diferencia de configuración entre los dos, y el vocabulario se aplica
+    // igual por reemplazo de texto, así que no se pierde nada.
+    this.maxAlternatives = 1;
   }
 }
 

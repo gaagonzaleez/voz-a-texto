@@ -148,6 +148,7 @@
         <button class="tab" data-tab="tts">🗣️ Escuchar con otras voces</button>
         <button class="tab" data-tab="exp">📤 Exportar</button>
         <button class="tab" data-tab="voc">📚 Vocabulario</button>
+        <button class="tab" data-tab="diag">🩺 Diagnóstico</button>
       </nav>
 
       <!-- Grabaciones -->
@@ -188,6 +189,17 @@
           <button class="exp" data-fmt="clipboard"><b>Copiar</b><span>al portapapeles</span></button>
           <button class="exp" data-fmt="print"><b>Imprimir</b><span>o guardar como PDF</span></button>
         </div>
+      </div>
+
+      <!-- Diagnóstico -->
+      <div class="tab-panel" data-panel="diag">
+        <div class="panel-head">
+          <p>Qué está haciendo el motor de dictado. Sirve para entender por qué no transcribe.</p>
+          <button id="btnCopyDiag" class="btn btn-mini">Copiar diagnóstico</button>
+        </div>
+        <ul id="diagEstado" class="diag-estado"></ul>
+        <div class="diag-log-head">Últimos eventos</div>
+        <ol id="diagLog" class="diag-log"></ol>
       </div>
 
       <!-- Vocabulario -->

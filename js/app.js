@@ -10,7 +10,7 @@ import { Transcriber, isSupported as srSupported } from './recognition.js';
 import { applyVocabulary, applyVoiceCommands, joinChunk, normWord } from './textproc.js';
 import { Reader, sortVoices } from './tts.js';
 import * as Calib from './calibration.js';
-import { exportSession } from './export/exporters.js';
+import { exportSession, copyToClipboard } from './export/exporters.js';
 import { setupPWA } from './pwa.js';
 
 /* ═══════════════ Estado ═══════════════ */
@@ -30,6 +30,7 @@ const state = {
   gotResult: false,
   sawSound: false,
   conflictTimer: 0,
+  diag: [],
 };
 
 const recorder = new Recorder();
@@ -185,27 +186,9 @@ async function startRecording() {
     return;
   }
 
-  try {
-    setStatus('preparando');
-    // Si no se guarda audio, el micrófono NO se toma: se lo dejamos entero al
-    // dictado. Varios Android no permiten grabar y dictar al mismo tiempo, y
-    // abrirlo sólo para mover el medidor bastaba para dejar mudo el dictado.
-    if (state.prefs.keepAudio) {
-      await recorder.openMic(state.prefs.micId, state.profile?.constraints);
-      await refreshMicList();
-      await recorder.start();
-    } else {
-      recorder.closeMic();
-      setMeter(0, 0);
-    }
-  } catch (err) {
-    setStatus('idle');
-    const msg = micError(err);
-    toast(msg, 'err', 8000);
-    $('#recHint').textContent = msg;   // el aviso flotante puede quedar fuera de pantalla
-    return;
-  }
-
+  // El dictado arranca PRIMERO y sin esperas: algunos Android sólo permiten
+  // iniciar el reconocimiento de voz dentro del gesto que lo pidió, y
+  // cualquier await previo (abrir el micrófono) rompía esa condición.
   state.mode = 'recording';
   state.segStart = performance.now();
   state.segElapsed = 0;
@@ -214,8 +197,26 @@ async function startRecording() {
   startTimer();
   setStatus('recording');
   hideRecAlert();
+  logDiag('app', 'REC', state.prefs.keepAudio ? 'con audio' : 'sin audio');
   transcriber.start($('#selLang').value);
   vigilarTranscripcion();
+
+  // Y recién después se prepara la grabación del audio, si corresponde
+  if (!state.prefs.keepAudio) {
+    recorder.closeMic();
+    setMeter(0, 0);
+    return;
+  }
+  try {
+    await recorder.openMic(state.prefs.micId, state.profile?.constraints);
+    await refreshMicList();
+    await recorder.start();
+  } catch (err) {
+    const msg = micError(err);
+    logDiag('audio', 'ERROR', err?.name || '');
+    toast(msg + ' El dictado sigue funcionando.', 'err', 8000);
+    $('#recHint').textContent = msg;   // el aviso flotante puede quedar fuera de pantalla
+  }
 }
 
 function pauseRecording() {
@@ -232,23 +233,23 @@ function pauseRecording() {
 
 async function resumeRecording() {
   if (state.mode !== 'paused') return;
-  try {
-    if (state.prefs.keepAudio) {
-      if (!recorder.stream) await recorder.openMic(state.prefs.micId, state.profile?.constraints);
-      if (recorder.rec) recorder.resume();
-      else await recorder.start();
-    }
-  } catch (err) {
-    toast(micError(err), 'err');
-    return;
-  }
   state.mode = 'recording';
   state.segStart = performance.now();
   state.gotResult = false;
   startTimer();
   setStatus('recording');
-  transcriber.start($('#selLang').value);
+  transcriber.start($('#selLang').value);      // primero el dictado, dentro del gesto
   vigilarTranscripcion();
+
+  if (!state.prefs.keepAudio) return;
+  try {
+    if (!recorder.stream) await recorder.openMic(state.prefs.micId, state.profile?.constraints);
+    if (recorder.rec) recorder.resume();
+    else await recorder.start();
+  } catch (err) {
+    logDiag('audio', 'ERROR', err?.name || '');
+    toast(micError(err) + ' El dictado sigue funcionando.', 'err');
+  }
 }
 
 async function stopRecording() {
@@ -439,8 +440,18 @@ function bindEngines() {
       $('#phraseMeterPeak').style.left = (e.detail.peak * 100).toFixed(1) + '%';
     }
   });
-  recorder.addEventListener('error', () => toast('Se cortó la grabación de audio.', 'err'));
+  recorder.addEventListener('error', () => {
+    logDiag('audio', 'ERROR', 'se cortó la grabación');
+    toast('Se cortó la grabación de audio.', 'err');
+  });
+  recorder.addEventListener('start', () => logDiag('audio', 'grabando'));
+  recorder.addEventListener('stop', () => logDiag('audio', 'grabación detenida'));
+  recorder.addEventListener('pause', () => logDiag('audio', 'en pausa'));
+  recorder.addEventListener('resume', () => logDiag('audio', 'reanudado'));
+  window.addEventListener('online', () => logDiag('red', 'volvió la conexión'));
+  window.addEventListener('offline', () => logDiag('red', 'se cortó la conexión'));
 
+  transcriber.addEventListener('log', e => logDiag('dictado', e.detail.evento, e.detail.detalle));
   transcriber.addEventListener('final', e => {
     state.gotResult = true;
     clearTimeout(state.conflictTimer);
@@ -454,6 +465,7 @@ function bindEngines() {
     $('#interim').textContent = t;
   });
   transcriber.addEventListener('error', e => {
+    logDiag('dictado', 'ERROR', e.detail.code || '');
     let msg = e.detail.message;
     // En Android, grabar el audio y dictar a la vez puede pelearse por el micrófono
     if (state.prefs.keepAudio && (e.detail.code === 'audio-capture' || e.detail.code === 'not-allowed')) {
@@ -463,7 +475,10 @@ function bindEngines() {
     $('#recHint').textContent = msg;
     if (state.mode === 'recording') stopRecording();
   });
-  transcriber.addEventListener('warn', e => toast(e.detail.message, '', 2500));
+  transcriber.addEventListener('warn', e => {
+    logDiag('dictado', 'aviso', e.detail.code || '');
+    toast(e.detail.message, '', 2500);
+  });
 
   reader.addEventListener('progress', e => {
     $('#ttsProgress').textContent = `Leyendo ${e.detail.index + 1} de ${e.detail.total}`;
@@ -502,6 +517,67 @@ function appendChunk(raw) {
   $('#interim').textContent = '';
   updateStats();
   touch();
+}
+
+/* ═══════════════ Diagnóstico ═══════════════
+   Deja a la vista qué está haciendo el motor de dictado. Cuando algo no
+   transcribe, esto dice por qué sin tener que adivinar. */
+
+function logDiag(fuente, evento, detalle = '') {
+  state.diag.push({ t: Date.now(), fuente, evento, detalle });
+  if (state.diag.length > 80) state.diag.shift();
+  if ($('.tab-panel[data-panel="diag"]')?.classList.contains('is-active')) renderDiagLog();
+}
+
+function renderDiagLog() {
+  const log = $('#diagLog');
+  if (!log) return;
+  log.innerHTML = state.diag.map(d => {
+    const hora = new Date(d.t).toLocaleTimeString('es', { hour12: false }) +
+      '.' + String(new Date(d.t).getMilliseconds()).padStart(3, '0').slice(0, 2);
+    const clase = /error|no arrancó|caído/i.test(d.evento) ? 'bad'
+                : /texto|escuchando/i.test(d.evento) ? 'ok' : '';
+    return `<li><time>${hora}</time><span class="src">${escapeHtml(d.fuente)}</span>` +
+           `<span class="msg ${clase}">${escapeHtml(d.evento)}${d.detalle ? ' — ' + escapeHtml(d.detalle) : ''}</span></li>`;
+  }).join('');
+  log.scrollTop = log.scrollHeight;
+}
+
+async function renderDiagEstado() {
+  const ul = $('#diagEstado');
+  if (!ul) return;
+
+  let permiso = 'desconocido';
+  try {
+    const st = await navigator.permissions?.query({ name: 'microphone' });
+    if (st) permiso = st.state === 'granted' ? 'concedido'
+                    : st.state === 'denied' ? 'bloqueado' : 'pendiente';
+  } catch { /* Firefox no expone este permiso */ }
+
+  const filas = [
+    ['Dictado por voz', srSupported ? 'disponible' : 'no disponible en este navegador', srSupported ? 'ok' : 'bad'],
+    ['Permiso del micrófono', permiso, permiso === 'concedido' ? 'ok' : permiso === 'bloqueado' ? 'bad' : 'warn'],
+    ['Conexión', navigator.onLine ? 'en línea' : 'sin conexión', navigator.onLine ? 'ok' : 'bad'],
+    ['Motor escuchando ahora', transcriber.running ? 'sí' : 'no', transcriber.running ? 'ok' : ''],
+    ['Dictado activo', transcriber.active ? 'sí' : 'no', ''],
+    ['Micrófono tomado por la app', recorder.stream ? 'sí (medidor/grabación)' : 'no', ''],
+    ['Guardar audio', state.prefs.keepAudio ? 'activado' : 'apagado', ''],
+    ['Idioma', $('#selLang').value, ''],
+    ['Instalada como app', window.matchMedia?.('(display-mode: standalone)').matches ? 'sí' : 'no', ''],
+    ['Palabras en el documento', String(countWords($('#docText').value)), ''],
+  ];
+  ul.innerHTML = filas.map(([k, v, c]) =>
+    `<li><span>${escapeHtml(k)}</span><b class="${c}">${escapeHtml(v)}</b></li>`).join('');
+}
+
+function textoDiagnostico() {
+  const est = [...$('#diagEstado').querySelectorAll('li')]
+    .map(li => li.querySelector('span').textContent + ': ' + li.querySelector('b').textContent);
+  const ev = state.diag.map(d =>
+    new Date(d.t).toLocaleTimeString('es', { hour12: false }) +
+    ` [${d.fuente}] ${d.evento}${d.detalle ? ' — ' + d.detalle : ''}`);
+  return ['DIAGNÓSTICO — Voz a Texto', new Date().toLocaleString('es'),
+          navigator.userAgent, '', '— Estado —', ...est, '', '— Eventos —', ...ev].join('\n');
 }
 
 /* ═══════════════ Audios guardados ═══════════════ */
@@ -710,7 +786,14 @@ function bindUI() {
   $$('.tab').forEach(tab => tab.addEventListener('click', () => {
     $$('.tab').forEach(t => t.classList.toggle('is-active', t === tab));
     $$('.tab-panel').forEach(p => p.classList.toggle('is-active', p.dataset.panel === tab.dataset.tab));
+    if (tab.dataset.tab === 'diag') { renderDiagEstado(); renderDiagLog(); }
   }));
+
+  $('#btnCopyDiag').addEventListener('click', async () => {
+    await renderDiagEstado();
+    await copyToClipboard(textoDiagnostico());
+    toast('Diagnóstico copiado. Pegalo donde lo necesites.', 'ok');
+  });
 
   // Audios
   $('#audioList').addEventListener('click', async e => {

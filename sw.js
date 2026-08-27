@@ -9,7 +9,7 @@
    voz del navegador). Sin conexión podés escribir, grabar audio, escuchar
    tus grabaciones y exportar. */
 
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = `voz-a-texto-${VERSION}`;
 const TIMEOUT_MS = 3500;
 
