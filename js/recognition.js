@@ -20,6 +20,8 @@ export class Transcriber extends EventTarget {
     this._gen = 0;                // generación: invalida motores viejos
     this._restartTimer = 0;
     this._watchdog = 0;
+    this._lastFinal = '';
+    this._lastFinalAt = 0;
     this._idleTicks = 0;
     this._lastActivity = 0;
     this._backoff = 300;
@@ -53,6 +55,8 @@ export class Transcriber extends EventTarget {
   /** Crea y arranca un motor nuevo, descartando el anterior. */
   _spawn() {
     this._kill();
+    this._lastFinal = '';        // el acumulado es propio de cada sesión del motor
+    this._lastFinalAt = 0;
     const gen = this._gen;
     const mio = () => gen === this._gen;      // ¿sigo siendo el motor vigente?
 
@@ -79,11 +83,11 @@ export class Transcriber extends EventTarget {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const result = e.results[i];
         if (result.isFinal) {
-          const text = this._bestAlternative(result);
-          if (text.trim()) {
-            this._log('texto', text.trim().slice(0, 40));
+          const nuevo = this._soloLoNuevo(this._bestAlternative(result));
+          if (nuevo) {
+            this._log('texto', nuevo.slice(0, 40));
             this.dispatchEvent(new CustomEvent('final', {
-              detail: { text: text.trim(), confidence: result[0].confidence ?? null },
+              detail: { text: nuevo, confidence: result[0].confidence ?? null },
             }));
           }
         } else {
@@ -137,6 +141,46 @@ export class Transcriber extends EventTarget {
       this._backoff = Math.min(this._backoff * 2, 4000);
       this._planRestart();
     }
+  }
+
+  /* Varios Android reemiten el resultado ACUMULADO de la frase cada vez que
+     crece ("Hola" → "Hola ella" → "Hola ella está"…), todos marcados como
+     definitivos. Si se agrega cada uno entero, el documento queda con la
+     frase repetida creciendo. Acá se devuelve sólo la parte nueva. */
+  _soloLoNuevo(textoCrudo) {
+    const texto = (textoCrudo || '').trim();
+    if (!texto) return '';
+
+    const previo = this._lastFinal || '';
+    const ahora = Date.now();
+    const norm = t => t.toLowerCase().replace(/\s+/g, ' ').trim();
+    const a = norm(previo), b = norm(texto);
+
+    // Lo mismo que recién: es una reemisión, no que hayas repetido la frase.
+    // Pasados unos segundos sí se toma como algo dicho de nuevo.
+    if (a && a === b && ahora - (this._lastFinalAt || 0) < 5000) {
+      this._lastFinalAt = ahora;
+      this._log('repetido', 'omitido');
+      return '';
+    }
+
+    // La frase creció: sólo se agrega la cola nueva
+    if (a && b.startsWith(a)) {
+      const cola = texto.slice(previo.length).trim();
+      this._lastFinal = texto;
+      this._lastFinalAt = ahora;
+      return cola;
+    }
+
+    // Eco del final de la frase anterior, justo después: ya está escrito
+    if (a && a.endsWith(b) && ahora - (this._lastFinalAt || 0) < 4000) {
+      this._log('eco', 'omitido');
+      return '';
+    }
+
+    this._lastFinal = texto;
+    this._lastFinalAt = ahora;
+    return texto;
   }
 
   /** Un único reinicio pendiente a la vez. */
