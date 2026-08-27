@@ -141,8 +141,10 @@ direcciones. **Funciona sin internet**: podés escribir, grabar audio, escuchart
 Lo único que necesita conexión es el dictado, porque lo resuelve el servicio de voz del
 navegador.
 
-Cada vez que la abrís busca la versión más nueva y usa la guardada sólo si no hay conexión,
-así que nunca se queda pegada en una versión vieja.
+Cada versión guarda su propio juego completo de archivos, así que nunca se mezclan piezas de
+dos versiones distintas. Cuando se publica una nueva, la app muestra arriba **«Hay una versión
+nueva — Actualizar ahora»**. En la barra lateral también está **«↻ Buscar actualización»** y el
+número de versión que estás usando, por si querés forzarlo.
 
 ### Desde el celular
 

@@ -21,6 +21,10 @@
 <body>
 
 <div id="unsupported" class="banner hidden"></div>
+<div id="updateBanner" class="banner banner-ok hidden">
+  <span>Hay una versión nueva de la app.</span>
+  <button id="btnReload" class="btn btn-mini">Actualizar ahora</button>
+</div>
 
 <div class="app">
 
@@ -47,6 +51,8 @@
       <div id="calibStatus" class="calib-status">Sin calibrar</div>
       <button id="btnInstall" class="btn btn-soft btn-block hidden">📲 Instalar como app</button>
       <div id="installHint" class="install-hint hidden"></div>
+      <button id="btnUpdate" class="btn btn-ghost btn-block btn-mini" style="margin-top:8px">↻ Buscar actualización</button>
+      <div id="appVersion" class="calib-status"></div>
     </div>
   </aside>
 

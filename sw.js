@@ -1,17 +1,19 @@
-/* Service worker: deja la app usable sin internet.
+/* Service worker: deja la app usable sin internet y mantiene las versiones
+   consistentes.
 
-   Estrategia "red primero, caché de respaldo": si hay conexión siempre se
-   sirve la versión más nueva; si no, la última que quedó guardada. Así no
-   se puede quedar pegada una versión vieja, que es el problema clásico de
-   las apps instaladas.
+   Cada versión guarda su propio juego completo de archivos y se sirve desde
+   ahí. Así nunca se mezclan piezas de dos versiones distintas, que es lo que
+   pasaba antes: cada archivo competía contra un cronómetro y, en una
+   conexión lenta, unos llegaban nuevos y otros salían de la copia vieja.
 
-   Ojo: el dictado por voz sí necesita internet (lo resuelve el servicio de
-   voz del navegador). Sin conexión podés escribir, grabar audio, escuchar
-   tus grabaciones y exportar. */
+   Cuando entra una versión nueva se avisa a la pantalla para que ofrezca
+   recargar, en vez de dejarte con una versión vieja sin saberlo.
 
-const VERSION = 'v10';
+   El dictado en vivo necesita internet (lo resuelve el servicio de voz del
+   navegador). Sin conexión podés escribir, grabar, escuchar y exportar. */
+
+const VERSION = 'v11';
 const CACHE = `voz-a-texto-${VERSION}`;
-const TIMEOUT_MS = 3500;
 
 const SHELL = [
   './',
@@ -42,18 +44,33 @@ const SHELL = [
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // Si algún archivo falla, la instalación no se cae por eso
-    await Promise.allSettled(SHELL.map(url => cache.add(url)));
-    self.skipWaiting();
+    // Sin caché del navegador de por medio: se quiere la copia recién publicada
+    await Promise.allSettled(
+      SHELL.map(url => fetch(new Request(url, { cache: 'reload' }))
+        .then(r => (r && r.ok ? cache.put(url, r) : null))));
+    await self.skipWaiting();
   })());
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const names = await caches.keys();
-    await Promise.all(names.filter(n => n !== CACHE).map(n => caches.delete(n)));
+    const nombres = await caches.keys();
+    const habiaAnterior = nombres.some(n => n.startsWith('voz-a-texto-') && n !== CACHE);
+    await Promise.all(nombres.filter(n => n !== CACHE).map(n => caches.delete(n)));
     await self.clients.claim();
+
+    // Si venía de una versión anterior, la pantalla ofrece recargar
+    if (habiaAnterior) {
+      const clientes = await self.clients.matchAll({ type: 'window' });
+      for (const c of clientes) c.postMessage({ tipo: 'version-nueva', version: VERSION });
+    }
   })());
+});
+
+self.addEventListener('message', e => {
+  if (e.data?.tipo === 'que-version') {
+    e.source?.postMessage({ tipo: 'version', version: VERSION });
+  }
 });
 
 self.addEventListener('fetch', event => {
@@ -66,36 +83,23 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
 
-    /* La librería de transcripción pesa más de 20 MB: con el límite de
-       tiempo de abajo nunca llegaría a bajar en un celular. Para esos
-       archivos, que además no cambian nunca, se usa la copia guardada y
-       se baja sin apuro la primera vez. */
-    if (url.pathname.includes('/vendor/')) {
-      const guardado = await cache.match(request);
-      if (guardado) return guardado;
-      const bajado = await fetch(request);
-      if (bajado && bajado.ok) cache.put(request, bajado.clone());
-      return bajado;
-    }
+    // La versión instalada se sirve entera desde su propio juego de archivos
+    const guardado = await cache.match(request, { ignoreSearch: true });
+    if (guardado) return guardado;
 
     try {
-      const fresh = await withTimeout(fetch(request), TIMEOUT_MS);
-      if (fresh && fresh.ok) cache.put(request, fresh.clone());
-      return fresh;
+      const fresco = await fetch(request);
+      if (fresco && fresco.ok) cache.put(request, fresco.clone());
+      return fresco;
     } catch {
-      const cached = await cache.match(request) || await cache.match('./index.html');
-      if (cached) return cached;
+      // Navegación sin conexión y sin copia exacta: vale la portada
+      if (request.mode === 'navigate') {
+        const portada = await cache.match('./index.html');
+        if (portada) return portada;
+      }
       return new Response('Sin conexión y sin copia guardada.', {
         status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
     }
   })());
 });
-
-function withTimeout(promise, ms) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
-    promise.then(r => { clearTimeout(timer); resolve(r); },
-                 e => { clearTimeout(timer); reject(e); });
-  });
-}

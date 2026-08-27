@@ -328,6 +328,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .suggest-item s{color:var(--tx3)} .suggest-item b{color:var(--ok)}
 
 /* ═══════════ Varios ═══════════ */
+.banner-ok{background:#123a30;color:#7ee0b0;border-bottom-color:#1d4d3f;
+  display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
 .banner{background:#3a2f14;color:#ffd79a;padding:11px 18px;font-size:13.5px;text-align:center;border-bottom:1px solid #5c4a20}
 .banner a{color:#fff}
 .toast{
