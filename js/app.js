@@ -129,7 +129,7 @@ function renderSessions() {
   const list = $('#sessionList');
   $('#sessionCount').textContent = state.sessions.length;
   list.innerHTML = state.sessions.map(s => `
-    <li class="session-item ${s.id === state.session?.id ? 'is-active' : ''}" data-session="${s.id}">
+    <li class="session-item ${s.id === state.session?.id ? 'is-active' : ''} ${s.finished ? 'is-done' : ''}" data-session="${s.id}">
       <b>${escapeHtml(s.title || 'Sin título')}</b>
       <small>${countWords(s.text || '')} palabras · ${fmtRelative(s.updatedAt)}</small>
       <button class="session-del" data-del="${s.id}" title="Eliminar documento">✕</button>
@@ -181,6 +181,44 @@ function updateStats() {
   $('#statWords').textContent = `${w} palabra${w === 1 ? '' : 's'}`;
   $('#statChars').textContent = `${t.length} caracteres`;
   $('#btnUndo').disabled = !state.undoStack.length;
+  $('#btnFinish').disabled = !t.trim();
+}
+
+/** Da por cerrado el documento actual y deja uno nuevo listo para dictar. */
+async function terminarDocumento() {
+  if (!state.session) return;
+
+  if (state.mode !== 'idle') await stopRecording();
+
+  const texto = $('#docText').value;
+  if (!texto.trim()) {
+    toast('Este documento está vacío: no hay nada que cerrar.', 'err');
+    return;
+  }
+
+  state.session.text = texto;
+  state.session.title = $('#docTitle').value;
+
+  // Sin título, se toma el principio de lo dictado: así la lista se entiende
+  if (!state.session.title.trim() || state.session.title === 'Documento sin título') {
+    const inicio = texto.trim().split(/\s+/).slice(0, 7).join(' ').replace(/[.,;:!?…]+$/, '');
+    state.session.title = inicio.length > 58 ? inicio.slice(0, 58) + '…' : inicio;
+  }
+
+  state.session.finished = true;
+  state.session.updatedAt = Date.now();
+  await Sessions.put(state.session);
+
+  const i = state.sessions.findIndex(x => x.id === state.session.id);
+  if (i >= 0) state.sessions[i] = state.session;
+
+  const nombre = state.session.title;
+  const nuevo = newSession($('#selLang').value);
+  await Sessions.put(nuevo);
+  state.sessions.unshift(nuevo);
+  await openSession(nuevo.id);
+
+  toast(`«${nombre}» quedó guardado. Ya podés dictar en uno nuevo.`, 'ok', 5000);
 }
 
 /* ═══════════════ Grabación ═══════════════ */
@@ -520,6 +558,7 @@ function appendChunk(raw) {
 
   const ta = $('#docText');
   const before = ta.value;
+  state.session.finished = false;        // se volvió a dictar en él
   state.undoStack.push(before);
   if (state.undoStack.length > 40) state.undoStack.shift();
 
@@ -857,6 +896,7 @@ function bindUI() {
   $('#docText').addEventListener('input', e => {
     if (!state.session) return;
     state.session.text = e.target.value;
+    state.session.finished = false;      // volviste a escribir: ya no está cerrado
     updateStats();
     touch();
   });
@@ -868,6 +908,7 @@ function bindUI() {
     updateStats();
     touch();
   });
+  $('#btnFinish').addEventListener('click', terminarDocumento);
   $('#btnClearDoc').addEventListener('click', () => {
     if (!$('#docText').value.trim()) return;
     if (!confirm('¿Vaciar todo el texto de este documento? Los audios no se borran.')) return;

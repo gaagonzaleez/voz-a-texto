@@ -31,6 +31,9 @@ El perfil queda guardado. Podés repetir la calibración cuando quieras desde **
   mañana— el texto nuevo se **agrega al final del mismo documento**.
 - Atajo de teclado: `Ctrl` + `Espacio`.
 - El texto se guarda solo mientras hablás. Podés editarlo a mano en cualquier momento.
+- Cuando terminás, **«✓ Terminar y cerrar»** guarda el documento, lo marca como listo (queda con
+  un ✓ en la lista) y te abre uno nuevo. Si no le pusiste título, se lo pone solo con las
+  primeras palabras de lo que dictaste. Podés volver a abrirlo y seguir cuando quieras.
 
 ### 3. Puntuación dictada
 
