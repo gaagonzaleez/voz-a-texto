@@ -193,7 +193,7 @@ export class Transcriber extends EventTarget {
 
 /** Escucha una sola frase y devuelve lo que se entendió (se usa en la calibración). */
 export function listenOnce({ lang = 'es-AR', maxMs = 12000, silenceMs = 2500,
-                             startMs = 4000, onState = null } = {}) {
+                             startMs = 4000, onState = null, onPartial = null } = {}) {
   return new Promise((resolve, reject) => {
     if (!isSupported) return reject(new Error('unsupported'));
     const rec = new SR();
@@ -237,6 +237,7 @@ export function listenOnce({ lang = 'es-AR', maxMs = 12000, silenceMs = 2500,
         if (e.results[i].isFinal) finalText = e.results[i][0].transcript;
         else interimText += e.results[i][0].transcript;
       }
+      onPartial?.((finalText + ' ' + interimText).trim());
       clearTimeout(silenceTimer);
       silenceTimer = setTimeout(finish, silenceMs);   // fin por pausa al hablar
     };

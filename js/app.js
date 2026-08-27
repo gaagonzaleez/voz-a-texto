@@ -183,9 +183,17 @@ async function startRecording() {
 
   try {
     setStatus('preparando');
-    await recorder.openMic(state.prefs.micId, state.profile?.constraints);
-    await refreshMicList();
-    if (state.prefs.keepAudio) await recorder.start();
+    // Si no se guarda audio, el micrófono NO se toma: se lo dejamos entero al
+    // dictado. Varios Android no permiten grabar y dictar al mismo tiempo, y
+    // abrirlo sólo para mover el medidor bastaba para dejar mudo el dictado.
+    if (state.prefs.keepAudio) {
+      await recorder.openMic(state.prefs.micId, state.profile?.constraints);
+      await refreshMicList();
+      await recorder.start();
+    } else {
+      recorder.closeMic();
+      setMeter(0, 0);
+    }
   } catch (err) {
     setStatus('idle');
     const msg = micError(err);
@@ -216,8 +224,8 @@ function pauseRecording() {
 async function resumeRecording() {
   if (state.mode !== 'paused') return;
   try {
-    if (!recorder.stream) await recorder.openMic(state.prefs.micId, state.profile?.constraints);
     if (state.prefs.keepAudio) {
+      if (!recorder.stream) await recorder.openMic(state.prefs.micId, state.profile?.constraints);
       if (recorder.rec) recorder.resume();
       else await recorder.start();
     }
@@ -305,7 +313,9 @@ function setStatus(mode) {
     btn.title = 'Pausar (Ctrl+Espacio)';
     $('#btnPause').disabled = false; $('#btnStop').disabled = false;
     $('#btnPause').innerHTML = '⏸ Pausar';
-    $('#recHint').textContent = 'Estoy escuchando. Todo lo que digas se escribe abajo.';
+    $('#recHint').textContent = state.prefs.keepAudio
+      ? 'Estoy escuchando. Todo lo que digas se escribe abajo.'
+      : 'Estoy escuchando. Todo lo que digas se escribe abajo. (Sin medidor: el micrófono queda libre para el dictado.)';
   } else if (mode === 'paused') {
     pill.classList.add('pill-pause'); txt.textContent = 'En pausa';
     btn.classList.add('is-paused'); label.textContent = 'SEGUIR';
@@ -338,6 +348,8 @@ function bindEngines() {
     if (calib.open) {
       $('#calibMeterFill').style.width = (e.detail.level * 100).toFixed(1) + '%';
       $('#calibMeterPeak').style.left = (e.detail.peak * 100).toFixed(1) + '%';
+      $('#phraseMeterFill').style.width = (e.detail.level * 100).toFixed(1) + '%';
+      $('#phraseMeterPeak').style.left = (e.detail.peak * 100).toFixed(1) + '%';
     }
   });
   recorder.addEventListener('error', () => toast('Se cortó la grabación de audio.', 'err'));
@@ -712,7 +724,7 @@ function bindUI() {
 const calib = {
   open: false, auto: false, step: 1,
   noise: null, level: null,
-  phraseIdx: 0, results: [], suggestions: [],
+  phraseIdx: 0, results: [], suggestions: [], micTestTimer: 0,
 };
 
 function openCalib(auto) {
@@ -730,9 +742,8 @@ function openCalib(auto) {
   $('#scoreBox').classList.add('hidden');
   $('#phraseHeard').classList.add('hidden');
   $('#phraseDiff').classList.add('hidden');
-  showStep(1);
   renderPhrase();
-  openCalibMic();
+  showStep(1);          // showStep(1) se encarga de abrir el micrófono
 }
 
 /** Mensaje fijo dentro del paso 1 (los avisos flotantes pueden quedar
@@ -743,7 +754,17 @@ function setMicState(kind, text) {
   el.innerHTML = text;
 }
 
+let aperturaEnCurso = null;
+
 async function openCalibMic() {
+  // Dos llamadas al mismo tiempo dejaban un micrófono tomado sin dueño, y ese
+  // stream huérfano era suficiente para que el dictado no escuchara nada.
+  if (aperturaEnCurso) return aperturaEnCurso;
+  aperturaEnCurso = abrirMicrofonoCalibracion();
+  try { return await aperturaEnCurso; } finally { aperturaEnCurso = null; }
+}
+
+async function abrirMicrofonoCalibracion() {
   setMicState('', 'Conectando con el micrófono…');
   try {
     await recorder.openMic($('#calibMic').value || state.prefs.micId);
@@ -773,6 +794,12 @@ function showStep(n) {
     s.classList.toggle('is-done', i < n);
   });
   $$('.cstep').forEach(s => s.classList.toggle('is-active', +s.dataset.cstep === n));
+
+  // El dictado necesita el micrófono libre: en Android, si la app lo tiene
+  // tomado para el medidor, el motor de voz no escucha nada.
+  if (n === 1) { if (!recorder.stream) openCalibMic(); }
+  else { liberarMicrofono(); }
+
   $('#calibPrev').disabled = n === 1;
   $('#calibNext').textContent = n === 3 ? (calib.auto ? 'Guardar y grabar' : 'Guardar y cerrar') : 'Siguiente →';
   if (n === 3) renderSuggestions();
@@ -850,6 +877,7 @@ function bindCalib() {
   });
 
   $('#btnPhrase').addEventListener('click', runPhrase);
+  $('#btnMicTest').addEventListener('click', () => probarMicrofono());
   $('#btnPhraseSkip').addEventListener('click', () => { nextPhrase(); });
 
   $('#calibVocForm').addEventListener('submit', e => {
@@ -872,6 +900,46 @@ function bindCalib() {
     }
     await finishCalib();
   });
+}
+
+/** Suelta el micrófono y apaga el medidor del paso 2. */
+function liberarMicrofono() {
+  clearTimeout(calib.micTestTimer);
+  if (state.mode === 'idle') recorder.closeMic();
+  $('#phraseMeterBox').classList.add('hidden');
+  $('#phraseMeterFill').style.width = '0%';
+  $('#phraseMeterPeak').style.left = '0%';
+  setMeter(0, 0);
+}
+
+/** Prueba puntual del micrófono en el paso 2, sin usar el dictado. */
+async function probarMicrofono(segundos = 6) {
+  const box = $('#phraseMeterBox'), msg = $('#phraseMeterMsg'), btn = $('#btnMicTest');
+  box.classList.remove('hidden');
+  msg.className = 'meter-msg';
+  msg.textContent = 'Abriendo el micrófono…';
+  btn.disabled = true;
+
+  if (!recorder.stream && !(await openCalibMic())) {
+    msg.className = 'meter-msg bad';
+    msg.textContent = 'No se pudo abrir el micrófono. Revisá el permiso del navegador.';
+    btn.disabled = false;
+    return;
+  }
+
+  const res = await Calib.measure(recorder, segundos * 1000, ({ remaining }) => {
+    msg.textContent = `Hablá normal… ${Math.ceil(remaining / 1000)} s`;
+  });
+  const v = Calib.judgeLevel(res.db, res.peakDb);
+  msg.className = 'meter-msg ' + (v.level === 'ok' ? 'ok' : v.level === 'bad' ? 'bad' : '');
+  msg.textContent = `${v.tag}: ${v.text}`;
+  btn.disabled = false;
+
+  // Se suelta enseguida: el dictado lo necesita libre
+  calib.micTestTimer = setTimeout(() => {
+    if (state.mode === 'idle') recorder.closeMic();
+    $('#phraseMeterFill').style.width = '0%';
+  }, 600);
 }
 
 function showMicAdvice() {
@@ -902,23 +970,41 @@ async function runPhrase() {
   if (!phrase) return;
   const btn = $('#btnPhrase');
   btn.disabled = true;
+  $('#btnMicTest').disabled = true;
   btn.innerHTML = '🔴 Escuchando…';
   $('#phraseDiff').classList.add('hidden');
   const heardBox = $('#phraseHeard');
   heardBox.classList.remove('hidden');
   heardBox.innerHTML = '<b>Preparando</b>Abriendo el dictado…';
 
+  // Clave en el celular: el motor de voz necesita el micrófono para él solo
+  liberarMicrofono();
+
+  let vivo = '';
+  const pintarVivo = () => {
+    heardBox.innerHTML = '<b>Te escucho</b><span class="phrase-live-dot"></span>' +
+      (vivo ? `<span class="phrase-live">${escapeHtml(vivo)}</span>`
+            : '<span class="phrase-live">Leé la frase en voz alta y natural…</span>');
+  };
+
   try {
-    const res = await Calib.testPhrase(phrase, $('#selLang').value, st => {
-      if (st === 'listening') heardBox.innerHTML = '<b>Escuchando</b>Leé la frase en voz alta y natural.';
-      if (st === 'done') heardBox.innerHTML = '<b>Procesando</b>Comparando lo que dijiste…';
-    });
+    const res = await Calib.testPhrase(
+      phrase, $('#selLang').value,
+      st => {
+        if (st === 'listening') pintarVivo();
+        if (st === 'done') heardBox.innerHTML = '<b>Procesando</b>Comparando lo que dijiste…';
+      },
+      parcial => { vivo = parcial; pintarVivo(); });
     calib.results.push(res);
     calib.suggestions = Calib.mergeSuggestions(
       calib.suggestions,
       res.suggestions.map(s => ({ ...s, checked: true })));
 
-    $('#phraseHeard').innerHTML = `<b>Lo que entendió</b>${escapeHtml(res.heard || '(no se escuchó nada)')}`;
+    $('#phraseHeard').innerHTML = res.heard
+      ? `<b>Lo que entendió</b>${escapeHtml(res.heard)}`
+      : '<b>No se escuchó nada</b>Probá «🔊 Probar micrófono» para ver si te toma el volumen. ' +
+        'Si el medidor se mueve pero el dictado no entiende, revisá que tengas internet: ' +
+        'el reconocimiento de voz lo resuelve un servicio en línea.';
     $('#phraseHeard').classList.remove('hidden');
     $('#phraseDiff').innerHTML = res.ops.map(op => {
       if (op.op === 'ok') return `<span class="w w-ok">${escapeHtml(op.expected)}</span>`;
@@ -931,9 +1017,11 @@ async function runPhrase() {
     updateCalibFooter();
     btn.innerHTML = '🎤 Repetir frase';
     btn.disabled = false;
+    $('#btnMicTest').disabled = false;
     $('#btnPhraseSkip').textContent = 'Siguiente frase →';
   } catch (err) {
     btn.disabled = false;
+    $('#btnMicTest').disabled = false;
     btn.innerHTML = '🎤 Leer esta frase';
     const msg =
       err.message === 'unsupported'

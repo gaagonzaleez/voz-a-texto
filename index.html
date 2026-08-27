@@ -113,7 +113,7 @@
         <label class="switch" title="Mayúscula inicial y espaciado correcto">
           <input type="checkbox" id="optSmart" checked><span>Formato automático</span>
         </label>
-        <label class="switch" title="Guarda el audio para escucharlo después">
+        <label class="switch" title="Guarda el audio para escucharlo después. En algunos celulares no se puede grabar y dictar a la vez: si el dictado falla, destildá esta opción.">
           <input type="checkbox" id="optKeepAudio" checked><span>Guardar audio</span>
         </label>
       </div>
@@ -256,7 +256,18 @@
           <div class="phrase-actions">
             <button id="btnPhrase" class="btn btn-primary">🎤 Leer esta frase</button>
             <button id="btnPhraseSkip" class="btn btn-ghost">Saltear</button>
+            <button id="btnMicTest" class="btn btn-ghost">🔊 Probar micrófono</button>
           </div>
+
+          <!-- Medidor de voz: se usa para comprobar el micrófono sin dictar -->
+          <div id="phraseMeterBox" class="phrase-meter hidden">
+            <div class="meter meter-lg">
+              <div id="phraseMeterFill" class="meter-fill"></div>
+              <div id="phraseMeterPeak" class="meter-peak"></div>
+            </div>
+            <div id="phraseMeterMsg" class="meter-msg"></div>
+          </div>
+
           <div id="phraseHeard" class="phrase-heard hidden"></div>
           <div id="phraseDiff" class="phrase-diff hidden"></div>
         </div>

@@ -80,6 +80,8 @@ export class Recorder extends EventTarget {
     const buf = new Float32Array(this._analyser.fftSize);
 
     const tick = () => {
+      // El cuadro pendiente puede llegar después de cerrar el micrófono
+      if (!this._analyser) return;
       this._analyser.getFloatTimeDomainData(buf);
       let sum = 0, max = 0;
       for (let i = 0; i < buf.length; i++) {
