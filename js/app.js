@@ -7,7 +7,7 @@ import { $, $$, fmtTime, fmtDur, fmtDate, fmtRelative, countWords, escapeHtml,
 import { Sessions, Audios, Settings, newSession, storageEstimate } from './db.js';
 import { Recorder, blobDuration, extFor } from './recorder.js';
 import { Transcriber, isSupported as srSupported } from './recognition.js';
-import { applyVocabulary, applyVoiceCommands, joinChunk, normWord } from './textproc.js';
+import { applyVocabulary, applyVoiceCommands, joinChunk, normWord, separarLineas } from './textproc.js';
 import { Reader, sortVoices } from './tts.js';
 import * as Calib from './calibration.js';
 import { exportSession, copyToClipboard } from './export/exporters.js';
@@ -20,7 +20,7 @@ const state = {
   sessions: [],
   vocab: [],
   profile: null,
-  prefs: { lang: 'es-AR', micId: '', vocab: true, commands: true, smart: true, keepAudio: true, modelo: '' },
+  prefs: { lang: 'es-AR', micId: '', vocab: true, commands: true, smart: true, keepAudio: true, modelo: '', formato: 'corrido' },
   mode: 'idle',              // idle | recording | paused
   segStart: 0,               // inicio del tramo actual
   segElapsed: 0,             // acumulado del tramo (descontando pausas)
@@ -80,6 +80,7 @@ async function loadPrefs() {
   $('#optCommands').checked = state.prefs.commands;
   $('#optSmart').checked = state.prefs.smart;
   $('#optKeepAudio').checked = state.prefs.keepAudio;
+  $('#selFormato').value = state.prefs.formato || 'corrido';
   transcriber.lang = state.prefs.lang;
 }
 const savePrefs = debounce(() => Settings.set('prefs', state.prefs), 300);
@@ -182,6 +183,7 @@ function updateStats() {
   $('#statChars').textContent = `${t.length} caracteres`;
   $('#btnUndo').disabled = !state.undoStack.length;
   $('#btnFinish').disabled = !t.trim();
+  $('#btnSplit').disabled = !t.trim();
 }
 
 /** Da por cerrado el documento actual y deja uno nuevo listo para dictar. */
@@ -563,7 +565,7 @@ function appendChunk(raw) {
   if (state.undoStack.length > 40) state.undoStack.shift();
 
   const atEnd = ta.selectionStart >= before.length - 1;
-  ta.value = joinChunk(before, chunk, { smart: state.prefs.smart });
+  ta.value = joinChunk(before, chunk, { smart: state.prefs.smart, modo: state.prefs.formato });
   state.session.text = ta.value;
   if (atEnd) {
     ta.scrollTop = ta.scrollHeight;
@@ -908,6 +910,26 @@ function bindUI() {
     updateStats();
     touch();
   });
+  $('#selFormato').addEventListener('change', e => {
+    state.prefs.formato = e.target.value;
+    savePrefs();
+  });
+
+  // Reacomoda lo que ya está escrito, con el formato elegido
+  $('#btnSplit').addEventListener('click', () => {
+    const ta = $('#docText');
+    if (!ta.value.trim()) return;
+    const modo = state.prefs.formato === 'guiones' ? 'guiones' : 'lineas';
+    const nuevo = separarLineas(ta.value, modo);
+    if (nuevo === ta.value) return toast('El texto ya está separado.', '', 2500);
+    state.undoStack.push(ta.value);
+    ta.value = nuevo;
+    state.session.text = nuevo;
+    updateStats();
+    touch();
+    toast('Listo: una oración por renglón. Podés deshacerlo con «Deshacer dictado».', 'ok', 5000);
+  });
+
   $('#btnFinish').addEventListener('click', terminarDocumento);
   $('#btnClearDoc').addEventListener('click', () => {
     if (!$('#docText').value.trim()) return;

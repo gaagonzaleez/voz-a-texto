@@ -53,6 +53,20 @@ Con **Puntuación por voz** activado podés decir:
 
 Con **Formato automático** además se corrigen los espacios y las mayúsculas de cada oración.
 
+### Separar el texto en líneas
+
+Dictar de corrido deja un bloque difícil de leer. El selector **Separar** decide cómo se acomoda
+el texto mientras hablás:
+
+| Opción | Resultado |
+|---|---|
+| **Todo seguido** | un párrafo corrido, como antes |
+| **Una oración por línea** | después de cada punto, sigue abajo |
+| **Lista con guiones** | igual, pero cada renglón arranca con `- ` |
+
+Para el texto que ya está escrito está el botón **«⏎ Separar en líneas»**, que lo reacomoda de
+una vez con el formato elegido. Se puede deshacer.
+
 ### 4. Las grabaciones
 
 Cada vez que grabás se guarda el audio dentro del documento (podés desactivarlo con

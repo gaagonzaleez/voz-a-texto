@@ -12,7 +12,7 @@
    El dictado en vivo necesita internet (lo resuelve el servicio de voz del
    navegador). Sin conexión podés escribir, grabar, escuchar y exportar. */
 
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = `voz-a-texto-${VERSION}`;
 
 const SHELL = [

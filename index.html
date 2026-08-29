@@ -125,6 +125,14 @@
         <label class="switch" title="Mayúscula inicial y espaciado correcto">
           <input type="checkbox" id="optSmart" checked><span>Formato automático</span>
         </label>
+        <label class="fld" title="Cómo se acomoda el texto mientras dictás">
+          <span>Separar</span>
+          <select id="selFormato">
+            <option value="corrido">Todo seguido</option>
+            <option value="lineas">Una oración por línea</option>
+            <option value="guiones">Lista con guiones</option>
+          </select>
+        </label>
         <label class="switch" title="Guarda el audio para escucharlo después. En algunos celulares no se puede grabar y dictar a la vez.">
           <input type="checkbox" id="optKeepAudio" checked><span>Guardar audio</span>
         </label>
@@ -141,6 +149,7 @@
         </div>
         <div class="doc-tools">
           <button id="btnUndo" class="btn btn-mini" title="Deshacer el último tramo dictado">↶ Deshacer dictado</button>
+          <button id="btnSplit" class="btn btn-mini" title="Pone cada oración en su propio renglón">⏎ Separar en líneas</button>
           <button id="btnClearDoc" class="btn btn-mini">Vaciar texto</button>
           <button id="btnFinish" class="btn btn-mini btn-primary" title="Guarda este documento, lo cierra y abre uno nuevo">✓ Terminar y cerrar</button>
         </div>

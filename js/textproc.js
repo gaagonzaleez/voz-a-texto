@@ -120,26 +120,76 @@ export function capitalize(text) {
     (_, pre, ch) => pre + ch.toUpperCase());
 }
 
+/* ── Separación en líneas ──────────────────────────────────
+   'corrido'  todo seguido, como un párrafo
+   'lineas'   cada oración en su renglón
+   'guiones'  cada oración en su renglón, empezando con "- " */
+
+const CIERRA_ORACION = /[.!?…]+["»)]?\s*$/;
+
 /** Une el tramo nuevo con lo que ya había en el documento.
     Sólo se da formato al tramo nuevo: el texto que el usuario editó a mano
     nunca se reescribe. */
-export function joinChunk(prev, chunk, { smart = true } = {}) {
+export function joinChunk(prev, chunk, { smart = true, modo = 'corrido' } = {}) {
   if (!chunk) return prev;
   let piece = smart ? tidy(chunk) : chunk;
   if (!piece) return prev;
 
-  if (!prev) return smart ? capitalize(piece) : piece;
+  if (!prev) return marcar(smart ? capitalize(piece) : piece, modo);
 
+  const cerroOracion = CIERRA_ORACION.test(prev);
+  const tabulado = /\n\s*$/.test(prev);
   let sep;
-  if (/\n\s*$/.test(prev) || /\s$/.test(prev)) sep = '';
-  else if (/^[\s,.;:!?…)\n]/.test(piece)) sep = '';
-  else sep = ' ';
+  let arrancaLinea = false;
 
-  // Después de un cierre de oración, el tramo nuevo arranca en mayúscula
-  if (smart && /[.!?…]["»)]?\s*$/.test(prev)) piece = upperFirst(piece);
-  if (smart && /\n\s*$/.test(prev)) piece = upperFirst(piece);
+  // Con separación activada, después de cada punto se sigue abajo
+  if (modo !== 'corrido' && cerroOracion && !tabulado) {
+    sep = '\n';
+    arrancaLinea = true;
+  } else if (tabulado || /\s$/.test(prev)) {
+    sep = '';
+    arrancaLinea = modo !== 'corrido' && tabulado;
+  } else if (/^[\s,.;:!?…)\n]/.test(piece)) {
+    sep = '';
+  } else {
+    sep = ' ';
+  }
+
+  // La mayúscula va antes del guion: si no, el guion la tapa y no se aplica
+  if (smart && (cerroOracion || tabulado)) piece = upperFirst(piece);
+  if (arrancaLinea) piece = marcar(piece, modo);
 
   return prev + sep + piece;
+}
+
+/** Antepone el guion cuando corresponde, sin duplicarlo. */
+function marcar(linea, modo) {
+  if (modo !== 'guiones') return linea;
+  return /^\s*[-–—•]/.test(linea) ? linea : '- ' + linea.replace(/^\s+/, '');
+}
+
+/** Reacomoda un texto ya escrito: una oración por renglón. */
+export function separarLineas(texto, modo = 'lineas') {
+  if (!texto || !texto.trim()) return texto;
+
+  let t = texto
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    // Corta después del punto (y del signo de cierre si lo hay)
+    .replace(/([.!?…]+["»)]?)[ \t]+/g, '$1\n')
+    .replace(/\n{3,}/g, '\n\n');
+
+  if (modo === 'guiones') {
+    t = t.split('\n')
+      .map(l => (l.trim() ? marcar(capitalize(l.trim()), 'guiones') : ''))
+      .join('\n');
+  } else {
+    t = t.split('\n')
+      .map(l => (l.trim() ? capitalize(l.trim()) : ''))
+      .join('\n');
+  }
+
+  return t.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function upperFirst(s) {
